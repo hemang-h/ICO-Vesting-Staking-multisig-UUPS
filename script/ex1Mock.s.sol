@@ -2,17 +2,17 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {Counter} from "../src/Counter.sol";
+import {ex1MockToken} from "../src/ex1Mock.sol";
 
-contract CounterScript is Script {
-    Counter public counter;
+contract Ex1Mock is Script {
+    ex1MockToken public ex1Token;
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast();
 
-        counter = new Counter();
+        ex1Token = new ex1MockToken();
 
         vm.stopBroadcast();
     }
