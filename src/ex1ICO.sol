@@ -2,8 +2,13 @@
 pragma solidity ^0.8.23;
 
 import {IERC20, SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {AccessControl} from "@openzeppelin/contracts/access/AccessControl.sol";
-import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
+
+import {AccessControlUpgradeable} from "@openzeppelin/contracts-upgradeable/access/AccessControlUpgradeable.sol";
+import {UUPSUpgradeable} from "@openzeppelin/contracts-upgradeable/proxy/utils/UUPSUpgradeable.sol";
+import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
+import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
+
+import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 
 interface IAggregator {
     function latestRoundData()
@@ -18,10 +23,10 @@ interface IAggregator {
     );
 }
 
-contract Ex1ICO is AccessControl, ReentrancyGuard {
+contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    IERC20 immutable public ex1Token;
+    IERC20 public ex1Token;
 
     IERC20 public USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
     IERC20 public USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
@@ -31,6 +36,7 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
 
     bytes32 public constant ETH_TXN_RECORDER_ROLE = keccak256("ETH_TXN_RECORDER_ROLE");
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
+    bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant ICO_AUTHORISER_ROLE = keccak256("ICO_AUTHORISER_ROLE");
     bytes32 public constant VESTING_AUTHORISER_ROLE = keccak256("VESTING_AUTHORISER_ROLE");
     bytes32 public constant STAKING_AUTHORISER_ROLE = keccak256("STAKING_AUTHORISER_ROLE"); 
@@ -150,11 +156,26 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
         uint256 timestamp
     );
 
-    constructor(address _ex1Token) {
+    /// @custom:oz-upgrades-unsafe-allow constructor
+    constructor() {
+        _disableInitializers();
+    }
+
+    function initialize(address _ex1Token) public initializer {
+        __AccessControl_init();
+        __UUPSUpgradeable_init();
+        
         ex1Token = IERC20(_ex1Token);
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OWNER_ROLE, msg.sender);
+        _grantRole(UPGRADER_ROLE, msg.sender);
     }
+
+    function _authorizeUpgrade(address newImplementation)
+        internal
+        onlyRole(UPGRADER_ROLE)
+        override
+    {}
 
     /** 
         @dev Modifier to check if the sale is active
@@ -231,7 +252,7 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
     }
 
     /** 
-        @dev Function to get a specific ICO stage
+        @dev Function to deactivate a specific ICO stage
     */
     function deactivateICOStage(uint256 _stageID) external onlyRole(ICO_AUTHORISER_ROLE) {
         require(icoStages[_stageID].isActive, "Stage is already inactive!");
@@ -365,11 +386,7 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
             block.timestamp
         );
         if (isTokenReleasable) {
-            bool success = IERC20(ex1Token).transfer(msg.sender, _amount); 
-            require(
-                success,
-                "ex1Presale: Token Transfer Failed!"
-            );
+            ex1Token.safeTransfer(msg.sender, _amount); 
         }
         else {
             UserDepositsPerICOStage[_icoStageID][msg.sender] += _amount;
@@ -508,10 +525,9 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
             );
             require(success, "Token payment failed");
     }
-
-    ////////////////////////////////////////////////////////////////
-    ///////////////////  CLAIM FUNCTIONS   ////////////////////////
-    //////////////////////////////////////////////////////////////
+    // ////////////////////////////////////////////////////////////////
+    // ///////////////////  CLAIM FUNCTIONS   ////////////////////////
+    // //////////////////////////////////////////////////////////////
     /**
         @dev Function to set the claim schedule
         @param _icoStageID: The ID of the ICO stage
@@ -879,3 +895,5 @@ contract Ex1ICO is AccessControl, ReentrancyGuard {
         ex1Token.safeTransfer(recievingWallet, balance);
     }
 }
+
+
