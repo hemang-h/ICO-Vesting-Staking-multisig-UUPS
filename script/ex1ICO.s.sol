@@ -13,7 +13,7 @@ contract ex1ICOScript is Script {
     function run() public {
         vm.startBroadcast();
 
-        ex1Token = new Ex1ICO(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
+        ex1Token = new Ex1ICO();
 
         vm.stopBroadcast();
     }

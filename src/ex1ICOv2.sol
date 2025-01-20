@@ -26,7 +26,7 @@ interface IAggregator {
 contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    IERC20 public ex1Token;
+    IERC20 public ex1Token = IERC20(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
 
     IERC20 public USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
     IERC20 public USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
@@ -38,8 +38,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant ICO_AUTHORISER_ROLE = keccak256("ICO_AUTHORISER_ROLE");
-    bytes32 public constant VESTING_AUTHORISER_ROLE = keccak256("VESTING_AUTHORISER_ROLE");
-    bytes32 public constant STAKING_AUTHORISER_ROLE = keccak256("STAKING_AUTHORISER_ROLE"); 
 
     struct ICOStage{
         uint256 startTime;
@@ -47,21 +45,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 stageID;
         uint256 tokenPrice;
         bool isActive;
-    }
-
-    struct claimSchedule {
-        uint256 icoStageID;
-        uint256 startTime;
-        uint256 endTime;
-        uint256 interval;
-        uint256 slicePeriod;
-    }
-
-    struct StakingParamter {
-        uint256 percentageReturn;
-        uint256 timePeriodInSeconds;
-        uint256 _icoStageID;
-        uint256 _stakingEndTime;
     }
 
     uint256 public MaxTokenLimitPerAddress = 10000000000000 * 10 ** 18;
@@ -73,30 +56,19 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     uint256 public totalETHRaised;
 
     uint256 public latestICOStageID;
-    uint256[] private stageIDs;
+    uint256[] public stageIDs;
 
     mapping(address => uint256) public HoldersCumulativeBalance;
-    mapping(address => bool) public HoldersExists;
     mapping (uint256 => uint256) public tokensRaisedPerStage;  
-
-    mapping(address => bool) public isClaimed; 
-    mapping(address => uint256) public prevClaimTimestamp;
     
     mapping(uint256 => mapping(address => uint256)) public UserDepositsPerICOStage; 
-    mapping(uint256 => mapping(address => uint256)) public UserClaimedPerICOStage;
-    mapping(uint256 => mapping(address => uint256)) public claimedAmount;
+    mapping(uint256 => mapping(address => bool)) public HoldersExists;
 
     mapping(address => uint256) public BoughtWithEth;
 
     mapping(uint256 => ICOStage) public icoStages;
-    mapping(uint256 => claimSchedule) public claimSchedules;
-    mapping(uint256 => StakingParamter) public stakingParameters;
 
-    mapping(uint256 => mapping(address => bool)) public isStaked;
-    mapping(uint256 => mapping(address => uint256)) public stakeTimestamp;
-    mapping(uint256 => mapping(address => uint256)) public previousStakingRewardClaimTimestamp;
-
-    address public recievingWallet;    
+    address public recievingWallet = 0x52C1ffFb760F653fe648F396747967Bb1971eb38;    
     bool public isTokenReleasable; 
 
     event TokensBoughtUSDT(
@@ -141,20 +113,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 tokenPrice
     );
 
-    event ClaimScheduleCreated(
-        uint256 indexed icoStageID,
-        uint256 startTime,
-        uint256 endTime,
-        uint256 interval,
-        uint256 slicePeriod,
-        uint256 timestamp
-    );
-
-    event StakingRewardClaimed(
-        address indexed staker,
-        uint256 amount,
-        uint256 timestamp
-    );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -169,6 +127,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OWNER_ROLE, msg.sender);
         _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(ICO_AUTHORISER_ROLE, msg.sender);
     }
 
     function _authorizeUpgrade(address newImplementation)
@@ -219,13 +178,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             "ex1Presale: Invalid End Time!"
         );
         latestICOStageID ++;
-        uint256 _scaledTokenPrice = (_tokenPriceUSD * 1e18) / 1e10;
 
         icoStages[latestICOStageID] = ICOStage({
             startTime: _startTime,
             endTime: _endTime,
             stageID: latestICOStageID,
-            tokenPrice: _scaledTokenPrice,
+            tokenPrice: _tokenPriceUSD,
             isActive: _isActive
         });
 
@@ -235,7 +193,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             latestICOStageID,
             _startTime,
             _endTime,
-            _scaledTokenPrice,
+            _tokenPriceUSD,
             _isActive
         );
     }
@@ -351,8 +309,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             "ex1Presale: Stage does not exist or is inactive!"
         );
         uint256 tokenValue = icoStages[_icoStageID].tokenPrice;
-        uint256 usdValue = (_amount * tokenValue)/(10 ** 18);       
-        return usdValue;
+        uint256 usdValueUnscaled = ((_amount/(10 ** 18)) * (tokenValue/(10 ** 18)));       
+        return usdValueUnscaled;
     }
    
    /**
@@ -374,8 +332,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             block.timestamp >= icoStages[_icoStageID].startTime && block.timestamp <= icoStages[_icoStageID].endTime,
             "ex1Presale: Invalid Stage Paramaters"
         );
-        uint256 price = calculatePrice(_amount, _icoStageID);
-        uint256 usdValue = price/(10 ** 12);
+        uint256 usdValueUnscaled = calculatePrice(_amount, _icoStageID);
+        uint256 usdValue = usdValueUnscaled * (10**18);
 
         emit TokensBoughtUSDC(
             msg.sender,
@@ -391,9 +349,9 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         else {
             UserDepositsPerICOStage[_icoStageID][msg.sender] += _amount;
         }
-        if (!HoldersExists[msg.sender]) {
+        if (!HoldersExists[_icoStageID][msg.sender]) {
             totalBuyers ++;
-            HoldersExists[msg.sender] = true;
+            HoldersExists[_icoStageID][msg.sender] = true;
         }
         
         totalTokensSold += _amount;
@@ -424,8 +382,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             block.timestamp >= icoStages[_icoStageID].startTime && block.timestamp <= icoStages[_icoStageID].endTime,
             "ex1Presale: Invalid Stage Paramaters"
         );
-        uint256 price = calculatePrice(_amount, _icoStageID);
-        uint256 usdValue = price/(10 ** 12);
+        uint256 usdValueUnscaled = calculatePrice(_amount, _icoStageID);
+        uint256 usdValue = usdValueUnscaled * (10**18);
 
         emit TokensBoughtUSDT(
             msg.sender,
@@ -441,9 +399,9 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         else {
             UserDepositsPerICOStage[_icoStageID][msg.sender] += _amount;
         }
-        if (!HoldersExists[msg.sender]) {
+        if (!HoldersExists[_icoStageID][msg.sender]) {
             totalBuyers ++;
-            HoldersExists[msg.sender] = true;
+            HoldersExists[_icoStageID][msg.sender] = true;
         }
         
         totalTokensSold += _amount;
@@ -490,9 +448,9 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             UserDepositsPerICOStage[_icoStageID][_recipient] += _amount;
         }
 
-        if (!HoldersExists[_recipient]) {
+        if (!HoldersExists[_icoStageID][_recipient]) {
             totalBuyers += 1;
-            HoldersExists[_recipient] = true;
+            HoldersExists[_icoStageID][_recipient] = true;
         }
         HoldersCumulativeBalance[_recipient] += _amount;
 
@@ -510,319 +468,18 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         );
     }
 
-    // ////////////////////////////////////////////////////////////////
-    // ///////////////////  CLAIM FUNCTIONS   ////////////////////////
-    // //////////////////////////////////////////////////////////////
-    /**
-        @dev Function to set the claim schedule
-        @param _icoStageID: The ID of the ICO stage
-        @param _startTime: The start time of the claim schedule in unix timestamp
-        @param _endTime: The end time of the claim schedule in unix timestamp
-        @param _claimInterval: The interval between each claim
-        @param _slicePeriod: The period to slice the claim
-    */
-    function setClaimSchedule(
-        uint256 _icoStageID,
-        uint256 _startTime,
-        uint256 _endTime,
-        uint256 _claimInterval,
-        uint256 _slicePeriod
-    ) external onlyRole(VESTING_AUTHORISER_ROLE){
-        require(
-            _startTime > icoStages[_icoStageID].endTime, 
-            "ex1Presale: Token Sale not Ended yet!"
-        );
-        require(
-            (_endTime > _startTime) && 
-            (_startTime > 0 || _endTime > 0) && 
-            (_endTime > block.timestamp) && 
-            (_startTime > block.timestamp),
-            "ex1Presale: Invalid Schedule or Parameters!"
-        );
-        require(
-            _claimInterval <= (_endTime - _startTime),
-            "ex1Presale: Invalid Cliff Period"
-        );
-        require(
-            _slicePeriod >= 0 && _slicePeriod <= 60, 
-            "ex1Presale: Invalid Slice Period"
-        );
-        
-        claimSchedules[_icoStageID] = claimSchedule({
-            icoStageID: _icoStageID,
-            startTime: _startTime,
-            endTime: _endTime,
-            interval: _claimInterval,
-            slicePeriod: _slicePeriod
-        });
-        emit ClaimScheduleCreated(
-            _icoStageID,
-            _startTime,
-            _endTime,
-            _claimInterval,
-            _slicePeriod,
-            block.timestamp
-        );
-    }
-
-    /**
-        @dev Function to update the claim schedule
-    */
-    function updateClaimSchedule(
-        uint256 _icoStageID,
-        uint256 _startTime,
-        uint256 _endTime,
-        uint256 _claimInterval,
-        uint256 _slicePeriod
-    ) external onlyRole(VESTING_AUTHORISER_ROLE) {
-        require(
-            _startTime == claimSchedules[_icoStageID].startTime,
-            "ex1Presale: Claim Schedule Already Started!"
-        );
-        require(
-            (_endTime > _startTime) && 
-            (_startTime > 0 || _endTime > 0) && 
-            (_endTime > block.timestamp) && 
-            (_startTime > block.timestamp),
-            "ex1Presale: Invalid Schedule or Parameters!"
-        );
-        require(
-            _claimInterval <= (_endTime - _startTime),
-            "ex1Presale: Invalid Cliff Period"
-        );
-        require(
-            _slicePeriod >= 0 && _slicePeriod <= 60, 
-            "ex1Presale: Invalid Slice Period"
-        );
-
-        claimSchedules[_icoStageID].startTime = _startTime;
-        claimSchedules[_icoStageID].endTime = _endTime;
-        claimSchedules[_icoStageID].interval = _claimInterval;
-        claimSchedules[_icoStageID].slicePeriod = _slicePeriod;
-    }
-
-    /**
-        @dev Function to claim tokens
-    */
-    function claimTokens(
-        uint256 _icoStageID
-    ) external nonReentrant returns(bool) {
-        require(
-            block.timestamp >= claimSchedules[_icoStageID].startTime 
-            && block.timestamp <= claimSchedules[_icoStageID].endTime,
-            "ex1Presale: Claim Not Active!"
-        );
-        require(
-            UserDepositsPerICOStage[_icoStageID][_msgSender()] > 0,
-            "ex1Presale: No Tokens to Claim!"
-        );
-        uint256 claimableAmount = calculateClaimableAmount(_msgSender(), _icoStageID);
-        require(
-            claimableAmount > 0,
-            "ex1Presale: No Tokens to Claim!"
-        );
-        require(
-            block.timestamp - prevClaimTimestamp[msg.sender] >= claimSchedules[_icoStageID].interval,
-            "ex1Presale: Claim Interval Not Reached!"
-        );
-
-        claimedAmount[_icoStageID][msg.sender] += claimableAmount;
-        prevClaimTimestamp[msg.sender] = block.timestamp;
-
-        bool success = IERC20(ex1Token).transfer(msg.sender, claimableAmount);
-        require(
-            success,
-            "ex1Presale: Token Transfer Failed!"
-        );
-        return true;
-    }  
-
-    /**
-        @dev Function to calculate the claimable amount
-        @param _caller: The address of the caller
-        @param _icoStageID: The ID of the ICO stage
-    */
-    function calculateClaimableAmount(
-        address _caller,
-        uint256 _icoStageID
-    ) public nonReentrant returns(uint256) {
-        claimSchedule memory schedule = claimSchedules[_icoStageID];
-
-        uint256 totalDeposits = UserClaimedPerICOStage[_icoStageID][_caller];
-        uint256 totalNumberOfSlices = (schedule.endTime - schedule.endTime) / schedule.slicePeriod;
-        uint256 tokenPerSlice = totalDeposits / totalNumberOfSlices;
-
-        uint256 elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
-        uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][msg.sender];
-
-        return claimable;
-    } 
-
-    //////////////////////////////////////////////////////////////////
-    ////////////////////   STAKING FUNCTIONS   //////////////////////
-    ////////////////////////////////////////////////////////////////
-    /**
-        @dev Function to create staking rewards parameters
-        @param _percentageReturn: The percentage of the staking reward
-        @param _timePeriodInSeconds: The time period in seconds over which a staking reward is calculated. 
-        * For example, if the time period is 30 days, the staking reward will be calculated over 30 days
-        @param _icoStageID: The ID of the ICO stage
-    */
-    function createStakingRewardsParamaters(
-        uint256 _percentageReturn,
-        uint256 _timePeriodInSeconds,
-        uint256 _icoStageID
-    ) external onlyRole(STAKING_AUTHORISER_ROLE) {
-        require(
-            _percentageReturn > 0 && _percentageReturn <= 100,
-            "ex1Presale: Invalid Percentage!"
-        );
-        require(
-            _timePeriodInSeconds > 0,
-            "ex1Presale: Invalid Time Period!"
-        );
-        require(
-            claimSchedules[_icoStageID].startTime > block.timestamp,
-            "ex1Presale: Vesting Schedule Claiming already Initiated"
-        );
-        stakingParameters[_icoStageID] = StakingParamter({
-            percentageReturn: _percentageReturn,
-            timePeriodInSeconds: _timePeriodInSeconds,
-            _icoStageID: _icoStageID,
-            _stakingEndTime: claimSchedules[_icoStageID].startTime - 1
-        });
-    }
-
-    /**
-        @dev Function to stake tokens
-        @param _icoStageID: The ID of the ICO stage
-    */
-    function stake(
-        uint256 _icoStageID
-    ) external returns(bool) {
-        require(
-            UserDepositsPerICOStage[_icoStageID][_msgSender()] > 0,
-            "ex1Presale: No Tokens to Stake!"
-        );
-        require(
-            block.timestamp <= claimSchedules[_icoStageID].startTime,
-            "ex1Presale: Staking Not Active!"
-        );
-        require(
-            !isStaked[_icoStageID][_msgSender()],
-            "ex1Presale: Already Staked!"
-        );
-        isStaked[_icoStageID][_msgSender()] = true;
-        stakeTimestamp[_icoStageID][_msgSender()] = block.timestamp;
-        previousStakingRewardClaimTimestamp[_icoStageID][_msgSender()] = 0;
-        return true;
-    }
-
-    /**
-        @dev Function to claim staking rewards
-        @param _icoStageID: The ID of the ICO stage
-    */
-    function claimStakingRewards(
-        uint256 _icoStageID
-    ) external nonReentrant {
-        require(
-            !isStaked[_icoStageID][_msgSender()], 
-            "ex1Presale: Not Staked Yet!"
-        );
-        uint256 reward = calculateStakeReward(_icoStageID, _msgSender());
-        require(
-            reward > 0,
-            "ex1Presale: No Rewards to Claim!"
-        );
-        bool success = IERC20(ex1Token).transfer(_msgSender(), reward);
-        require(
-            success,
-            "ex1Presale: Token Transfer Failed!"
-        );         
-        emit StakingRewardClaimed(
-            _msgSender(),
-            reward,
-            block.timestamp
-        );       
-    }
-
-    /**
-        @dev Internal Function to calculate the staking reward
-        @param _icoStageID: The ID of the ICO stage
-        @param _caller: The address of the caller
-    */
-    function calculateStakeReward(
-        uint256 _icoStageID,
-        address _caller
-    ) internal returns(uint256) {    
-        require(
-            isStaked[_icoStageID][_caller],
-            "ex1Presale: Not Staked Yet!"
-        );
-        uint256 userPercentage = (UserDepositsPerICOStage[_icoStageID][_caller] * (stakingParameters[_icoStageID].percentageReturn)) / 100;
-        uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
-        uint256 reward;
-
-        if (block.timestamp < stakingParameters[_icoStageID]._stakingEndTime) {
-            if (previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
-                reward = ((block.timestamp - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-                previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
-            }
-            else {
-                reward = ((block.timestamp - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-                previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
-            }            
-        } else {
-            reward = ((stakingParameters[_icoStageID]._stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-            isStaked[_icoStageID][_caller] = false;
-        }
-        return reward;
-    }
-    /**
-        @dev Function to view claimable rewards
-        @param _icoStageID: The ID of the ICO stage
-        @param _caller: The address of the caller
-    */
-    function viewClaimableRewards(
-        uint256 _icoStageID,
-        address _caller
-    ) external view returns(uint256) {
-        require(
-            isStaked[_icoStageID][_caller],
-            "ex1Presale: Not Staked Yet!"
-        );
-        uint256 userPercentage = UserDepositsPerICOStage[_icoStageID][_caller] * (stakingParameters[_icoStageID].percentageReturn / 100);
-        uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
-        uint256 reward;
-        if(previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
-            return reward = reward = ((block.timestamp - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-        }
-        else {
-            return reward = reward = ((block.timestamp - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-        }
-    }
-
-    /**
-        @dev Function to unstake tokens
-        @param _icoStageID: The ID of the ICO stage
-    */
-    function unstake(
-        uint256 _icoStageID
-    ) external returns(bool) {
-        require(
-            isStaked[_icoStageID][_msgSender()],
-            "ex1Presale: Not Staked Yet!"
-        );
-        isStaked[_icoStageID][_msgSender()] = false;
-        return true;
-    }
-
     /////Set Functions//////////
 
     function setMaxTokenLimitPerAddress(
         uint256 _limit
     ) external onlyRole(OWNER_ROLE) {
         MaxTokenLimitPerAddress = _limit;
+    }
+
+    function setTokenSaleAddress(
+        IERC20 _ex1Token
+    ) external onlyRole(OWNER_ROLE) {
+        ex1Token = _ex1Token;
     }
 
     function setMaxTokenLimitPerTransaction(
@@ -880,5 +537,3 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         ex1Token.safeTransfer(recievingWallet, balance);
     }
 }
-
-

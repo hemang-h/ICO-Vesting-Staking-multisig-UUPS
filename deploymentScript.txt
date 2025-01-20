@@ -1,2 +1,6 @@
 Deployment script: forge script script/ex1ICO.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast
 Verifcation script: forge verify-contract 0xc49dc70D475F6F28142d7F267502a5e11E94231B --etherscan-api-key=$BSC_TESTNET_API_KEY --constructor-args=$(cast abi-encode "constructor(address)" "0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096") --rpc-url=$BSC_TESTNET_RPC_URL --watch
+
+
+forge script script/ex1ICOv2.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify  
+forge script script/deployProxy.s.sol:DeployUUPSProxy --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify
