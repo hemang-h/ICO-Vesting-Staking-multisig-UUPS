@@ -38,7 +38,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant ICO_AUTHORISER_ROLE = keccak256("ICO_AUTHORISER_ROLE");
-
+    
     struct ICOStage{
         uint256 startTime;
         uint256 endTime;
@@ -165,6 +165,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _tokenPriceUSD,
         bool _isActive
     ) external onlyRole(ICO_AUTHORISER_ROLE) {
+        if(latestICOStageID > 0 ) {
+            require(
+            _startTime > icoStages[latestICOStageID].endTime,
+            "ex1Presale: Overlapping start time"
+        );
+        }        
         require (
             (_startTime < _endTime) && (_startTime > 0 || _endTime > 0),
             "ex1Presale: Invalid Schedule or Parameters!"
