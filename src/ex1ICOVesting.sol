@@ -21,6 +21,18 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant VESTING_AUTHORISER_ROLE = keccak256("VESTING_AUTHORISER_ROLE");
 
+    enum ProposalType{
+        SetClaimScheule,
+        UpdateClaimSchedule,
+        UpdateInterface,
+        UpgradeContract
+    }
+    
+    struct Transaction{
+        ProposalType proposalType;
+        uint256 txnID;
+    }
+    
     struct claimSchedule {
         uint256 icoStageID;
         uint256 startTime;
