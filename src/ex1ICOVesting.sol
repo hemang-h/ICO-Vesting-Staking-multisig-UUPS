@@ -32,7 +32,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         UpgradeContract,
         UpdateRequiredConfirmations
     }
-    
+   
     struct Proposal{
         mapping(address => bool) hasApproved;
         ProposalType proposalType;
@@ -43,15 +43,13 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 approvalCounts;
         bool executed;
     }
-
     struct ClaimScheduleParam{
         uint256 icoStageID;
         uint256 startTime;
         uint256 endTime;
         uint256 claimInterval;
         uint256 slicePeriod;
-    }
-    
+    }   
     struct claimSchedule {
         uint256 icoStageID;
         uint256 startTime;
@@ -67,7 +65,6 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     mapping(uint256 => mapping(address => uint256)) public claimedAmount;
 
     mapping(uint256 => claimSchedule) public claimSchedules;
-    mapping(uint256 => ClaimScheduleParam) public claimScheduleParams;
     mapping(uint256 => Proposal) public proposals;
 
     event ClaimScheduleCreated(
@@ -78,19 +75,16 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 slicePeriod,
         uint256 timestamp
     );
-
     event ProposalCreated(
         uint256 indexed proposalID,
         ProposalType proposalType,
         bytes32 proposalHash
     );
-
     event ProposalApproved(
         uint256 indexed proposalID,
         ProposalType proposalType,
         address signer
     );
-
     event ProposalExecuted(
         ProposalType proposalType,
         uint256 proposalId
