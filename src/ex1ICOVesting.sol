@@ -29,7 +29,8 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         SetClaimSchedule,
         UpdateClaimSchedule,
         UpdateInterface,
-        UpgradeContract
+        UpgradeContract,
+        UpdateRequiredConfirmations
     }
     
     struct Proposal{
@@ -91,7 +92,8 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     );
 
     event ProposalExecuted(
-        ProposalType proposalType
+        ProposalType proposalType,
+        uint256 proposalId
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -156,17 +158,16 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             })
         );
         bytes32 _proposalHash = keccak256(_paramsData);
-        uint256 _proposalID = proposalCount ++;
+        proposalCount ++;
 
-        Proposal storage proposal = proposals[_proposalID];
+        Proposal storage proposal = proposals[proposalCount];
         proposal.proposalHash = _proposalHash;
         proposal.proposalType = ProposalType.SetClaimSchedule;
         proposal.paramsData = _paramsData;
         proposal.timestamp = block.timestamp;
         
-
         emit ProposalCreated(
-            _proposalID,
+            proposalCount,
             ProposalType.SetClaimSchedule,
             _proposalHash
         );
@@ -211,16 +212,16 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             })
         );
         bytes32 _proposalHash = keccak256(_paramsData);
-        uint256 _proposalID = proposalCount ++;
+        proposalCount ++;
 
-        Proposal storage proposal = proposals[_proposalID];
+        Proposal storage proposal = proposals[proposalCount];
         proposal.proposalHash = _proposalHash;
         proposal.proposalType = ProposalType.SetClaimSchedule;
         proposal.paramsData = _paramsData;
         proposal.timestamp = block.timestamp;
 
         emit ProposalCreated(
-            _proposalID,
+            proposalCount,
             ProposalType.UpdateClaimSchedule,
             _proposalHash
         );
@@ -229,43 +230,68 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function proposeUpdateInterface(address _newInterface) external onlyRole(OWNER_ROLE) {
         bytes memory data = abi.encode(_newInterface);
         bytes32 proposalHash = keccak256(data);
-        uint256 proposalId = proposalCount++;
+        proposalCount++;
         
-        Proposal storage proposal = proposals[proposalId];
+        Proposal storage proposal = proposals[proposalCount];
         proposal.proposalType = ProposalType.UpdateInterface;
         proposal.proposalHash = proposalHash;
         proposal.timestamp = block.timestamp;
         proposal.paramsData = data;
         
-        emit ProposalCreated(proposalId, ProposalType.UpdateInterface, proposalHash);
+        emit ProposalCreated(proposalCount, ProposalType.UpdateInterface, proposalHash);
     }
 
     function proposeUpgrade(address _newImplementation) external onlyRole(UPGRADER_ROLE) {
         bytes memory data = abi.encode(_newImplementation);
         bytes32 proposalHash = keccak256(data);
-        uint256 proposalId = proposalCount++;
+        proposalCount++;
         
-        Proposal storage proposal = proposals[proposalId];
+        Proposal storage proposal = proposals[proposalCount];
         proposal.proposalType = ProposalType.UpgradeContract;
         proposal.proposalHash = proposalHash;
         proposal.timestamp = block.timestamp;
         proposal.paramsData = data;
         
-        emit ProposalCreated(proposalId, ProposalType.UpgradeContract, proposalHash);
+        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
+    }
+
+    function proposeUpdateRequiredConfirmations(
+        uint256 _requiredConfirmations
+    ) external onlyRole(OWNER_ROLE) {
+        require(
+            _requiredConfirmations > 0,
+            "ICO: Should be greater than 0"
+        );
+        bytes memory data = abi.encode(_requiredConfirmations);
+        bytes32 proposalHash = keccak256(data);
+        proposalCount++;
+
+        Proposal storage proposal = proposals[proposalCount];
+        proposal.paramsData = data;
+        proposal.proposalType = ProposalType.UpdateRequiredConfirmations;
+        proposal.proposalHash = proposalHash;
+        proposal.timestamp = block.timestamp;
+        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
     }
 
     function approveProposal(uint256 _proposalId) external onlyRole(SIGNER_ROLE) {
         Proposal storage proposal = proposals[_proposalId];
         require(
-            proposal.executed,
-            "ex1Vesting: Proposal already approved!"
+            _proposalId <= proposalCount,
+            "ex1Vesting: Invalid Proposal ID"
         );
         require(
-            proposal.hasApproved[_msgSender()],
+            !proposal.executed,
+            "ex1Vesting: Proposal already Executed!"
+        );
+        require(
+            !proposal.hasApproved[_msgSender()],
             "ex1Vesting: Already approved by the signer!"
         );
-        !proposal.hasApproved[_msgSender()];
+        proposal.hasApproved[_msgSender()] = true;
         proposal.approvalCounts ++;
+
+        emit ProposalApproved(_proposalId, proposal.proposalType, _msgSender());
 
         if(proposal.approvalCounts >= requiredConfirmations) {
             executeProposal(_proposalId);
@@ -278,7 +304,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         Proposal storage proposal = proposals[_proposalId];
         
         require(
-            proposal.executed,
+            !proposal.executed,
             "ex1Vesting: Proposal already approved!"
         );
         require(
@@ -299,8 +325,10 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         } else if (proposal.proposalType == ProposalType.UpgradeContract) {
             address newImplementation = abi.decode(proposal.paramsData, (address));
             _authorizeUpgrade(newImplementation);
-        }
-
+        } else if(proposal.proposalType == ProposalType.UpdateRequiredConfirmations){
+            uint256 _requiredConfirmations = abi.decode(proposal.paramsData, (uint256));
+            _updateRequiredConfirmation(_requiredConfirmations);
+        }                
         else {
             uint256 invalid = 0;
             require(
@@ -308,7 +336,12 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
                 "ICOVesting: Not Proposal Type found!"
             );
             return false;
-        }       
+        }   
+        emit ProposalExecuted(
+            proposal.proposalType,
+            _proposalId
+        );  
+        proposal.executed = true;          
         return true;
     }
    
@@ -407,6 +440,10 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
 
     function _updateInterface(address _newInterface) internal {
         icoInterface = Iex1ICO(_newInterface);
+    }
+
+    function _updateRequiredConfirmation(uint256 _requiredConfirmations) internal {
+        requiredConfirmations = _requiredConfirmations;
     }
 
     function _authorizeUpgrade(address newImplementation)
