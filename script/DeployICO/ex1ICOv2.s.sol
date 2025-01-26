@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "../src/ex1ICOv2.sol";
+import "../../src/ex1ICOv2.sol";
 import "forge-std/Script.sol";
 
 contract DeployTokenImplementation is Script {
@@ -16,3 +16,7 @@ contract DeployTokenImplementation is Script {
         console.log("Token Implementation Address:", address(implementation));
     }
 }
+
+/*
+    Deployment script: forge script script/DeployICO/ex1ICOv2.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify  
+*/

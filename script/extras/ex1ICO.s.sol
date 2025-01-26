@@ -2,17 +2,18 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {ex1MockToken} from "../src/ex1Mock.sol";
+import {Ex1ICO} from "../../src/extras/ex1ICO.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract Ex1Mock is Script {
-    ex1MockToken public ex1Token;
+contract ex1ICOScript is Script {
+    Ex1ICO public ex1Token;
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast();
 
-        ex1Token = new ex1MockToken();
+        ex1Token = new Ex1ICO();
 
         vm.stopBroadcast();
     }

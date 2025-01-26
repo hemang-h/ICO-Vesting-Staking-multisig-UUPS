@@ -2,17 +2,17 @@
 pragma solidity ^0.8.13;
 
 import {Script, console} from "forge-std/Script.sol";
-import {USDTMockToken} from "../src/usdtMock.sol";
+import {ex1MockToken} from "../../src/mocks/ex1Mock.sol";
 
-contract USDT is Script {
-    USDTMockToken public ex1Token;
+contract Ex1Mock is Script {
+    ex1MockToken public ex1Token;
 
     function setUp() public {}
 
     function run() public {
         vm.startBroadcast();
 
-        ex1Token = new USDTMockToken();
+        ex1Token = new ex1MockToken();
 
         vm.stopBroadcast();
     }

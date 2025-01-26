@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import "../src/ex1ICO.sol";
+import "../../src/extras/ex1ICO.sol";
 import "forge-std/Script.sol";
 
 contract DeployTokenImplementation is Script {
