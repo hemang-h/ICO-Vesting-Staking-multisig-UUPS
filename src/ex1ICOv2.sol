@@ -288,7 +288,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         @param amount: The amount of tokens
         @param _icoStageID: The ID of the ICO stage
      */
-    function geTokenPriceInBTC(
+    function getTokenPriceInBTC(
         uint256 amount,
         uint256 _icoStageID
     ) external view returns (uint256 BTCAmount) {
