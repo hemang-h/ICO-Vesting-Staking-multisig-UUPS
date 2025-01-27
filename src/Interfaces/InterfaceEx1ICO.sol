@@ -15,4 +15,6 @@ interface Iex1ICO {
     function HoldersExist(uint256, address) external returns(bool);
 
     function icoStages(uint256) external view returns(uint256, uint256, uint256, uint256, bool);
+
+    function createICOStage(bytes memory) external;
 }
