@@ -20,36 +20,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant VESTING_AUTHORISER_ROLE = keccak256("VESTING_AUTHORISER_ROLE");
-    bytes32 public constant SIGNER_ROLE = keccak256("SIGNER_ROLE");
 
-    uint256 public requiredConfirmations;
-    uint256 public proposalCount;
-
-    enum ProposalType{
-        SetClaimSchedule,
-        UpdateClaimSchedule,
-        UpdateInterface,
-        UpgradeContract,
-        UpdateRequiredConfirmations
-    }
-   
-    struct Proposal{
-        mapping(address => bool) hasApproved;
-        ProposalType proposalType;
-        bytes32 proposalHash;
-        bytes paramsData;
-        uint256 timestamp;
-        uint256 proposalID;
-        uint256 approvalCounts;
-        bool executed;
-    }
-    struct ClaimScheduleParam{
-        uint256 icoStageID;
-        uint256 startTime;
-        uint256 endTime;
-        uint256 claimInterval;
-        uint256 slicePeriod;
-    }   
     struct claimSchedule {
         uint256 icoStageID;
         uint256 startTime;
@@ -65,7 +36,6 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     mapping(uint256 => mapping(address => uint256)) public claimedAmount;
 
     mapping(uint256 => claimSchedule) public claimSchedules;
-    mapping(uint256 => Proposal) public proposals;
 
     event ClaimScheduleCreated(
         uint256 indexed icoStageID,
@@ -74,20 +44,6 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 interval,
         uint256 slicePeriod,
         uint256 timestamp
-    );
-    event ProposalCreated(
-        uint256 indexed proposalID,
-        ProposalType proposalType,
-        bytes32 proposalHash
-    );
-    event ProposalApproved(
-        uint256 indexed proposalID,
-        ProposalType proposalType,
-        address signer
-    );
-    event ProposalExecuted(
-        ProposalType proposalType,
-        uint256 proposalId
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -112,15 +68,13 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         @param _claimInterval: The interval between each claim
         @param _slicePeriod: The period to slice the claim
     */
-    
-    
-    function proposeClaimSchedule(
+    function setClaimSchedule(
         uint256 _icoStageID,
         uint256 _startTime,
         uint256 _endTime,
         uint256 _claimInterval,
         uint256 _slicePeriod
-    ) external onlyRole(VESTING_AUTHORISER_ROLE) {
+    ) external onlyRole(VESTING_AUTHORISER_ROLE){
         ( , uint256 endTime, , , ) = icoInterface.icoStages(_icoStageID);
         require(
             _startTime > endTime, 
@@ -141,36 +95,28 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             _slicePeriod >= 0 && _slicePeriod <= 60, 
             "ex1Presale: Invalid Slice Period"
         );
-
-        bytes memory _paramsData = abi.encode(
-            ClaimScheduleParam({
-                icoStageID: _icoStageID,
-                startTime: _startTime,
-                endTime: _endTime,
-                claimInterval: _claimInterval,
-                slicePeriod: _slicePeriod
-            })
-        );
-        bytes32 _proposalHash = keccak256(_paramsData);
-        proposalCount ++;
-
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalHash = _proposalHash;
-        proposal.proposalType = ProposalType.SetClaimSchedule;
-        proposal.paramsData = _paramsData;
-        proposal.timestamp = block.timestamp;
         
-        emit ProposalCreated(
-            proposalCount,
-            ProposalType.SetClaimSchedule,
-            _proposalHash
+        claimSchedules[_icoStageID] = claimSchedule({
+            icoStageID: _icoStageID,
+            startTime: _startTime,
+            endTime: _endTime,
+            interval: _claimInterval,
+            slicePeriod: _slicePeriod
+        });
+        emit ClaimScheduleCreated(
+            _icoStageID,
+            _startTime,
+            _endTime,
+            _claimInterval,
+            _slicePeriod,
+            block.timestamp
         );
     }
 
     /**
         @dev Function to update the claim schedule
     */
-    function proposeUpdateClaimSchedule(
+    function updateClaimSchedule(
         uint256 _icoStageID,
         uint256 _startTime,
         uint256 _endTime,
@@ -196,176 +142,11 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             _slicePeriod >= 0 && _slicePeriod <= 60, 
             "ex1Presale: Invalid Slice Period"
         );
-        bytes memory _paramsData = abi.encode(
-            ClaimScheduleParam({
-                icoStageID: _icoStageID,
-                startTime: _startTime,
-                endTime: _endTime,
-                claimInterval: _claimInterval,
-                slicePeriod: _slicePeriod
-            })
-        );
-        bytes32 _proposalHash = keccak256(_paramsData);
-        proposalCount ++;
 
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalHash = _proposalHash;
-        proposal.proposalType = ProposalType.SetClaimSchedule;
-        proposal.paramsData = _paramsData;
-        proposal.timestamp = block.timestamp;
-
-        emit ProposalCreated(
-            proposalCount,
-            ProposalType.UpdateClaimSchedule,
-            _proposalHash
-        );
-    }
-
-    function proposeUpdateInterface(address _newInterface) external onlyRole(OWNER_ROLE) {
-        bytes memory data = abi.encode(_newInterface);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-        
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalType = ProposalType.UpdateInterface;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        proposal.paramsData = data;
-        
-        emit ProposalCreated(proposalCount, ProposalType.UpdateInterface, proposalHash);
-    }
-
-    function proposeUpgrade(address _newImplementation) external onlyRole(UPGRADER_ROLE) {
-        bytes memory data = abi.encode(_newImplementation);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-        
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalType = ProposalType.UpgradeContract;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        proposal.paramsData = data;
-        
-        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
-    }
-
-    function proposeUpdateRequiredConfirmations(
-        uint256 _requiredConfirmations
-    ) external onlyRole(OWNER_ROLE) {
-        require(
-            _requiredConfirmations > 0,
-            "ICO: Should be greater than 0"
-        );
-        bytes memory data = abi.encode(_requiredConfirmations);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.paramsData = data;
-        proposal.proposalType = ProposalType.UpdateRequiredConfirmations;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
-    }
-
-    function approveProposal(uint256 _proposalId) external onlyRole(SIGNER_ROLE) {
-        Proposal storage proposal = proposals[_proposalId];
-        require(
-            _proposalId <= proposalCount,
-            "ex1Vesting: Invalid Proposal ID"
-        );
-        require(
-            !proposal.executed,
-            "ex1Vesting: Proposal already Executed!"
-        );
-        require(
-            !proposal.hasApproved[_msgSender()],
-            "ex1Vesting: Already approved by the signer!"
-        );
-        proposal.hasApproved[_msgSender()] = true;
-        proposal.approvalCounts ++;
-
-        emit ProposalApproved(_proposalId, proposal.proposalType, _msgSender());
-
-        if(proposal.approvalCounts >= requiredConfirmations) {
-            executeProposal(_proposalId);
-        }
-    }
-
-    function executeProposal(
-        uint256 _proposalId
-    ) internal returns(bool) {
-        Proposal storage proposal = proposals[_proposalId];
-        
-        require(
-            !proposal.executed,
-            "ex1Vesting: Proposal already approved!"
-        );
-        require(
-            proposal.approvalCounts >= requiredConfirmations,
-            "ex1Vesting: Insufficient Signer approvals"
-        );
-        if( proposal.proposalType == ProposalType.SetClaimSchedule ) {
-            ClaimScheduleParam memory params = abi.decode(proposal.paramsData, (ClaimScheduleParam));
-            _setClaimSchedule(params);
-        }
-        else if( proposal.proposalType == ProposalType.UpdateClaimSchedule ) {
-            ClaimScheduleParam memory params = abi.decode(proposal.paramsData, (ClaimScheduleParam));
-            _updateClaimSchedule(params);
-        }  
-        else if (proposal.proposalType == ProposalType.UpdateInterface) {
-            address newInterface = abi.decode(proposal.paramsData, (address));
-            _updateInterface(newInterface);
-        } else if (proposal.proposalType == ProposalType.UpgradeContract) {
-            address newImplementation = abi.decode(proposal.paramsData, (address));
-            _authorizeUpgrade(newImplementation);
-        } else if(proposal.proposalType == ProposalType.UpdateRequiredConfirmations){
-            uint256 _requiredConfirmations = abi.decode(proposal.paramsData, (uint256));
-            _updateRequiredConfirmation(_requiredConfirmations);
-        }                
-        else {
-            uint256 invalid = 0;
-            require(
-                invalid == 1,
-                "ICOVesting: Not Proposal Type found!"
-            );
-            return false;
-        }   
-        emit ProposalExecuted(
-            proposal.proposalType,
-            _proposalId
-        );  
-        proposal.executed = true;          
-        return true;
-    }
-   
-    function _setClaimSchedule(ClaimScheduleParam memory _params) internal {
-        claimSchedules[_params.icoStageID] = claimSchedule({
-            icoStageID: _params.icoStageID,
-            startTime: _params.startTime,
-            endTime: _params.endTime,
-            interval: _params.claimInterval,
-            slicePeriod: _params.slicePeriod
-        });
-        emit ClaimScheduleCreated(
-            _params.icoStageID,
-            _params.startTime,
-            _params.endTime,
-            _params.claimInterval,
-            _params.slicePeriod,
-            block.timestamp
-        );
-    }
-
-    /**
-        @dev Function to update the claim schedule
-    */
-    function _updateClaimSchedule(ClaimScheduleParam memory _params) internal {        
-        uint256 _icoStageID = _params.icoStageID;
-        claimSchedules[_icoStageID].startTime = _params.startTime;
-        claimSchedules[_icoStageID].endTime = _params.endTime;
-        claimSchedules[_icoStageID].interval = _params.claimInterval;
-        claimSchedules[_icoStageID].slicePeriod = _params.slicePeriod;
+        claimSchedules[_icoStageID].startTime = _startTime;
+        claimSchedules[_icoStageID].endTime = _endTime;
+        claimSchedules[_icoStageID].interval = _claimInterval;
+        claimSchedules[_icoStageID].slicePeriod = _slicePeriod;
     }
 
     /**
@@ -432,12 +213,10 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         return claimable;
     } 
 
-    function _updateInterface(address _newInterface) internal {
-        icoInterface = Iex1ICO(_newInterface);
-    }
-
-    function _updateRequiredConfirmation(uint256 _requiredConfirmations) internal {
-        requiredConfirmations = _requiredConfirmations;
+    function updateInterface(
+        Iex1ICO _icoInterface
+    ) external onlyRole(OWNER_ROLE) {
+        icoInterface = _icoInterface;
     }
 
     function _authorizeUpgrade(address newImplementation)
