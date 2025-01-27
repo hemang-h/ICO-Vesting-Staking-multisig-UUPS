@@ -21,70 +21,25 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     IERC20 public ex1Token;
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
-    bytes32 public constant SIGNER_ROLE = keccak256("SIGNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant STAKING_AUTHORISER_ROLE = keccak256("STAKING_AUTHORISER_ROLE"); 
 
-    enum ProposalType{
-        CreateStakingRewardsParamaters,
-        UpdateICOInterface,
-        UpdateVestingInterface,
-        UpgradeContract,
-        UpdateRequiredConfirmations
-    }
-    
-    struct Proposal{
-        mapping(address => bool) hasApproved;
-        ProposalType proposalType;
-        bytes32 proposalHash;
-        bytes paramsData;
-        uint256 timestamp;
-        uint256 proposalID;
-        uint256 approvalCounts;
-        bool executed;
-    }
-    struct StakingParamterData {
-        uint256 percentageReturn;
-        uint256 timePeriodInSeconds;
-        uint256 startTime;
-        uint256 _icoStageID;
-        uint256 _stakingEndTime;
-    }   
     struct StakingParamter {
         uint256 percentageReturn;
         uint256 timePeriodInSeconds;
         uint256 _icoStageID;
         uint256 _stakingEndTime;
     }
-
     mapping(uint256 => StakingParamter) public stakingParameters;
-    mapping(uint256 => Proposal) public proposals;
 
     mapping(uint256 => mapping(address => bool)) public isStaked;
     mapping(uint256 => mapping(address => uint256)) public stakeTimestamp;
     mapping(uint256 => mapping(address => uint256)) public previousStakingRewardClaimTimestamp;
 
-    uint256 public requiredConfirmations;
-    uint256 public proposalCount;
-
     event StakingRewardClaimed(
         address indexed staker,
         uint256 amount,
         uint256 timestamp
-    );
-    event ProposalCreated(
-        uint256 indexed proposalID,
-        ProposalType proposalType,
-        bytes32 proposalHash
-    );
-    event ProposalApproved(
-        uint256 indexed proposalID,
-        ProposalType proposalType,
-        address signer
-    );
-    event ProposalExecuted(
-        ProposalType proposalType,
-        uint256 proposalId
     );
 
     /// @custom:oz-upgrades-unsafe-allow constructor
@@ -108,12 +63,12 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         * For example, if the time period is 30 days, the staking reward will be calculated over 30 days
         @param _icoStageID: The ID of the ICO stage
     */
-    function proposeSetStakingRewards(
+    function createStakingRewardsParamaters(
         uint256 _percentageReturn,
         uint256 _timePeriodInSeconds,
         uint256 _icoStageID
     ) external onlyRole(STAKING_AUTHORISER_ROLE) {
-        ( , uint256 _startTime, , , ) = vestingInterface.claimSchedules(_icoStageID);
+        ( , uint256 startTime, , , ) = vestingInterface.claimSchedules(_icoStageID);
         require(
             _percentageReturn > 0 && _percentageReturn <= 100,
             "ex1Presale: Invalid Percentage!"
@@ -123,174 +78,14 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             "ex1Presale: Invalid Time Period!"
         );
         require(
-            _startTime > block.timestamp,
+            startTime > block.timestamp,
             "ex1Presale: Vesting Schedule Claiming already Initiated"
         );
-        bytes memory data = abi.encode(
-            StakingParamterData({
-                percentageReturn: _percentageReturn,
-                timePeriodInSeconds: _timePeriodInSeconds,
-                _icoStageID: _icoStageID,
-                _stakingEndTime: _startTime - 1,
-                startTime: _startTime
-            })
-        );
-
-        bytes32 _proposalHash = keccak256(data);
-        proposalCount ++;
-
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalHash = _proposalHash;
-        proposal.proposalType = ProposalType.CreateStakingRewardsParamaters;
-        proposal.paramsData = data;
-        proposal.timestamp = block.timestamp;
-        
-        emit ProposalCreated(
-            proposalCount,
-            ProposalType.CreateStakingRewardsParamaters,
-            _proposalHash
-        );
-    }
-
-    function proposeUpdateICOInterface(address _newInterface) external onlyRole(OWNER_ROLE) {
-        bytes memory data = abi.encode(_newInterface);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-        
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalType = ProposalType.UpdateICOInterface;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        proposal.paramsData = data;
-        
-        emit ProposalCreated(proposalCount, ProposalType.UpdateICOInterface, proposalHash);
-    }
-
-    function proposeUpdateVestingInterface(address _newInterface) external onlyRole(OWNER_ROLE) {
-        bytes memory data = abi.encode(_newInterface);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-        
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalType = ProposalType.UpdateVestingInterface;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        proposal.paramsData = data;
-        
-        emit ProposalCreated(proposalCount, ProposalType.UpdateVestingInterface, proposalHash);
-    }
-
-    function proposeUpgrade(address _newImplementation) external onlyRole(UPGRADER_ROLE) {
-        bytes memory data = abi.encode(_newImplementation);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-        
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.proposalType = ProposalType.UpgradeContract;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        proposal.paramsData = data;
-        
-        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
-    }
-
-    function proposeUpdateRequiredConfirmations(
-        uint256 _requiredConfirmations
-    ) external onlyRole(OWNER_ROLE) {
-        require(
-            _requiredConfirmations > 0,
-            "ICO: Should be greater than 0"
-        );
-        bytes memory data = abi.encode(_requiredConfirmations);
-        bytes32 proposalHash = keccak256(data);
-        proposalCount++;
-
-        Proposal storage proposal = proposals[proposalCount];
-        proposal.paramsData = data;
-        proposal.proposalType = ProposalType.UpdateRequiredConfirmations;
-        proposal.proposalHash = proposalHash;
-        proposal.timestamp = block.timestamp;
-        emit ProposalCreated(proposalCount, ProposalType.UpgradeContract, proposalHash);
-    }
-
-    function approveProposal(uint256 _proposalId) external onlyRole(SIGNER_ROLE) {
-        Proposal storage proposal = proposals[_proposalId];
-        require(
-            _proposalId <= proposalCount,
-            "ex1Vesting: Invalid Proposal ID"
-        );
-        require(
-            !proposal.executed,
-            "ex1Vesting: Proposal already Executed!"
-        );
-        require(
-            !proposal.hasApproved[_msgSender()],
-            "ex1Vesting: Already approved by the signer!"
-        );
-        proposal.hasApproved[_msgSender()] = true;
-        proposal.approvalCounts ++;
-
-        emit ProposalApproved(_proposalId, proposal.proposalType, _msgSender());
-
-        if(proposal.approvalCounts >= requiredConfirmations) {
-            executeProposal(_proposalId);
-        }
-    }
-
-    function executeProposal(
-        uint256 _proposalId
-    ) internal returns(bool) {
-        Proposal storage proposal = proposals[_proposalId];
-        
-        require(
-            !proposal.executed,
-            "ex1Vesting: Proposal already approved!"
-        );
-        require(
-            proposal.approvalCounts >= requiredConfirmations,
-            "ex1Vesting: Insufficient Signer approvals"
-        );
-        if( proposal.proposalType == ProposalType.CreateStakingRewardsParamaters ) {
-            StakingParamterData memory params = abi.decode(proposal.paramsData, (StakingParamterData));
-            _createStakingRewardsParamaters(params);
-        } else if (proposal.proposalType == ProposalType.UpdateICOInterface) {
-            address newInterface = abi.decode(proposal.paramsData, (address));
-            _updateICOInterface(newInterface);
-        } else if (proposal.proposalType == ProposalType.UpdateVestingInterface) {
-            address newInterface = abi.decode(proposal.paramsData, (address));
-            _updateVestingInterface(newInterface);
-        }    
-        else if (proposal.proposalType == ProposalType.UpgradeContract) {
-            address newImplementation = abi.decode(proposal.paramsData, (address));
-            _authorizeUpgrade(newImplementation);
-        } else if(proposal.proposalType == ProposalType.UpdateRequiredConfirmations){
-            uint256 _requiredConfirmations = abi.decode(proposal.paramsData, (uint256));
-            _updateRequiredConfirmation(_requiredConfirmations);
-        }
-        else {
-            uint256 invalid = 0;
-            require(
-                invalid == 1,
-                "ICOVesting: Not Proposal Type found!"
-            );
-            return false;
-        }   
-        emit ProposalExecuted(
-            proposal.proposalType,
-            _proposalId
-        );  
-        proposal.executed = true;          
-        return true;
-    }
-
-    function _createStakingRewardsParamaters(
-        StakingParamterData memory params
-    ) internal {
-        stakingParameters[params._icoStageID] = StakingParamter({
-            percentageReturn: params.percentageReturn,
-            timePeriodInSeconds: params.timePeriodInSeconds,
-            _icoStageID: params._icoStageID,
-            _stakingEndTime: params.startTime - 1
+        stakingParameters[_icoStageID] = StakingParamter({
+            percentageReturn: _percentageReturn,
+            timePeriodInSeconds: _timePeriodInSeconds,
+            _icoStageID: _icoStageID,
+            _stakingEndTime: startTime - 1
         });
     }
 
@@ -423,16 +218,16 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         return true;
     }
 
-    function _updateICOInterface(address _newInterface) internal {
-        icoInterface = Iex1ICO(_newInterface);
+    function updateIcoInterface( Iex1ICO _icoInterface ) external onlyRole(OWNER_ROLE) {
+        icoInterface = _icoInterface;
     }
 
-    function _updateVestingInterface(address _newInterface) internal {
-        vestingInterface = IVestingICO(_newInterface);
+    function updateVestingInterface( IVestingICO _vestingInterface ) external onlyRole(OWNER_ROLE) {
+        vestingInterface = _vestingInterface;
     }
 
-    function _updateRequiredConfirmation(uint256 _requiredConfirmations) internal {
-        requiredConfirmations = _requiredConfirmations;
+    function updateEX1Token(IERC20 _tokenAddress) external onlyRole(OWNER_ROLE) {
+        ex1Token = IERC20(_tokenAddress);
     }
 
     function _authorizeUpgrade(address newImplementation)
