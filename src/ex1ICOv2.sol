@@ -9,19 +9,7 @@ import "@openzeppelin/contracts-upgradeable/proxy/utils/Initializable.sol";
 import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol";
 
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
-
-interface IAggregator {
-    function latestRoundData()
-    external 
-    view
-    returns (
-        uint80 roundId,
-        int256 answer,
-        uint256 startedAt,
-        uint256 updatedAt,
-        uint80 answeredInRound
-    );
-}
+import "./Interfaces/IAggregator.sol";
 
 contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
@@ -165,7 +153,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _tokenPriceUSD,
         bool _isActive
     ) external onlyRole(ICO_AUTHORISER_ROLE) {
-        if(latestICOStageID > 0 ) {
+        if(latestICOStageID > 1 ) {
             require(
             _startTime > icoStages[latestICOStageID].endTime,
             "ex1Presale: Overlapping start time"
@@ -242,7 +230,20 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             _endTime > block.timestamp,
             "ex1Presale: Invalid time range!"
         );
-
+        uint256 prevID = _stageID - 1;
+        uint256 nextID = _stageID + 1;
+        if(_stageID > 1) {
+            require(
+                _startTime > icoStages[prevID].endTime,
+                "ICO: Start Time Overlapping with previous ICO end Time!"
+            );                         
+        }
+        if(_stageID < latestICOStageID) {
+            require(
+                _endTime < icoStages[nextID].startTime,
+                "ICO: End Time Overlapping with next ICO startTime!"
+            ); 
+        }        
         icoStages[_stageID].startTime = _startTime;
         icoStages[_stageID].endTime = _endTime;
         icoStages[_stageID].tokenPrice = _tokenPriceUSD;
