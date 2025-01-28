@@ -203,6 +203,26 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         return stages;
     }
 
+    /** 
+        @dev Function to get current active ICO stage
+    */
+
+    function getCurrentActiveICOStage() external view returns(uint256) {
+        require(
+            latestICOStageID > 0,
+            "ex1: No ICOs Created Yet"
+        );
+        for(uint _id = latestICOStageID; _id > 0; _id --) {
+            if(
+                (block.timestamp > icoStages[_id].startTime) 
+                && (block.timestamp < icoStages[_id].endTime) 
+                && (icoStages[_id].isActive ==true)
+            ) {
+                return _id;
+            }            
+        }
+        return 0;
+    }
 
     /** 
         @dev Function to deactivate a specific ICO stage
