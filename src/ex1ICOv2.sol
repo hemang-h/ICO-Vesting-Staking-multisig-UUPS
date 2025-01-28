@@ -153,7 +153,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _tokenPriceUSD,
         bool _isActive
     ) external onlyRole(ICO_AUTHORISER_ROLE) {
-        if(latestICOStageID > 1 ) {
+        if(latestICOStageID >= 1 ) {
             require(
             _startTime > icoStages[latestICOStageID].endTime,
             "ex1Presale: Overlapping start time"
@@ -202,6 +202,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         }
         return stages;
     }
+
 
     /** 
         @dev Function to deactivate a specific ICO stage
