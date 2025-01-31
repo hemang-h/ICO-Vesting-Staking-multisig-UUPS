@@ -12,3 +12,9 @@ docs/
 
 # Dotenv file
 .env
+
+#node_modules
+node_modules
+
+#Main_Multisig
+MainMulitisig
