@@ -12,6 +12,14 @@ import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 contract PrivateVesting is Initializable, AccessControlUpgradeable, UUPSUpgradeable {
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     
+    struct Vesting {
+        address beneficiary;
+        uint256 TotalAmount;
+        uint256 startTime;
+        uint256 endTime;
+        uint256 claimInterval;
+    }
+    
     constructor() {
         _disableInitializers();
     }
