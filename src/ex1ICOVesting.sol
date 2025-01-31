@@ -221,6 +221,24 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         return claimable;
     }
 
+    function nextClaimTime(
+        address _caller,
+        uint256 _icoStageID
+    ) public view returns(uint256) {
+        require(
+            icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) > 0, 
+            "ex1Presale: No Tokens to Claim!"
+        );
+        
+        claimSchedule memory schedule = claimSchedules[_icoStageID];
+        if(block.timestamp < schedule.startTime) {
+            return schedule.startTime;
+        }
+        else {
+            return prevClaimTimestamp[_caller] + schedule.interval;
+        }
+    }
+
     function updateInterface(
         Iex1ICO _icoInterface
     ) external onlyRole(OWNER_ROLE) {
