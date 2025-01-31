@@ -92,6 +92,10 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             "ex1Presale: Invalid Cliff Period"
         );
         require(
+            _claimInterval > 0,
+            "ex1Presal: Claim interval cannot be 0"
+        );
+        require(
             _slicePeriod >= 0 && _slicePeriod <= 60, 
             "ex1Presale: Invalid Slice Period"
         );
@@ -166,7 +170,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             exists,
             "ex1Presale: Holder doesn't Exists!"
         );
-        uint256 deposits = icoInterface.userDepositsPerICOStage(_icoStageID, _msgSender());
+        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender());
         require(
             deposits > 0,
             "ex1Presale: No Tokens to Claim!"
@@ -200,23 +204,31 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function calculateClaimableAmount(
         address _caller,
         uint256 _icoStageID
-    ) public nonReentrant returns(uint256) {
+    ) public view returns(uint256) {
         claimSchedule memory schedule = claimSchedules[_icoStageID];
 
-        uint256 totalDeposits = icoInterface.userDepositsPerICOStage(_icoStageID, _caller);
-        uint256 totalNumberOfSlices = (schedule.endTime - schedule.endTime) / schedule.slicePeriod;
+        if(block.timestamp < schedule.startTime) {
+            return 0;
+        }
+
+        uint256 totalDeposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
+        uint256 totalNumberOfSlices = (schedule.endTime - schedule.startTime) / schedule.slicePeriod;
         uint256 tokenPerSlice = totalDeposits / totalNumberOfSlices;
 
         uint256 elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
         uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][msg.sender];
 
         return claimable;
-    } 
+    }
 
     function updateInterface(
         Iex1ICO _icoInterface
     ) external onlyRole(OWNER_ROLE) {
         icoInterface = _icoInterface;
+    }
+
+    function updateEX1Token(IERC20 _tokenAddress) external onlyRole(OWNER_ROLE) {
+        ex1Token = IERC20(_tokenAddress);
     }
 
     function _authorizeUpgrade(address newImplementation)
