@@ -11,7 +11,7 @@ interface Iex1ICO {
     function HoldersCumulativeBalance(address) external view returns (uint256);
     function tokenRaisedPerStage(address) external returns(bool);
 
-    function userDepositsPerICOStage(uint256, address) external view returns (uint256);
+    function UserDepositsPerICOStage(uint256, address) external view returns (uint256);
     function HoldersExist(uint256, address) external returns(bool);
 
     function icoStages(uint256) external view returns(uint256, uint256, uint256, uint256, bool);
