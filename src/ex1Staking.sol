@@ -96,7 +96,7 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function stake(
         uint256 _icoStageID
     ) external returns(bool) {
-        uint256 deposits = icoInterface.userDepositsPerICOStage(_icoStageID, _msgSender());
+        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender());
         ( , uint256 startTime, , , ) = vestingInterface.claimSchedules(_icoStageID);
 
         require(
@@ -158,7 +158,7 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             isStaked[_icoStageID][_caller],
             "ex1Presale: Not Staked Yet!"
         );
-        uint256 deposits = icoInterface.userDepositsPerICOStage(_icoStageID, _caller);
+        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
         uint256 userPercentage = (deposits * (stakingParameters[_icoStageID].percentageReturn)) / 100;
         uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
         uint256 reward;
@@ -191,7 +191,7 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             isStaked[_icoStageID][_caller],
             "ex1Presale: Not Staked Yet!"
         );
-        uint256 deposits = icoInterface.userDepositsPerICOStage(_icoStageID, _caller);
+        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
         uint256 userPercentage = deposits * (stakingParameters[_icoStageID].percentageReturn / 100);
         uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
         uint256 reward;
