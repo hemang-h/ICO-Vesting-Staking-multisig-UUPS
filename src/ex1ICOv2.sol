@@ -47,7 +47,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     uint256[] public stageIDs;
 
     mapping(address => uint256) public HoldersCumulativeBalance;
-    mapping (uint256 => uint256) public tokensRaisedPerStage;  
+    mapping(uint256 => uint256) public tokensRaisedPerStage;  
+    mapping(uint256 => uint256) public usdRaisedPerStage;
     
     mapping(uint256 => mapping(address => uint256)) public UserDepositsPerICOStage; 
     mapping(uint256 => mapping(address => bool)) public HoldersExists;
@@ -59,20 +60,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     address public recievingWallet = 0x52C1ffFb760F653fe648F396747967Bb1971eb38;    
     bool public isTokenReleasable; 
 
-    event TokensBoughtUSDT(
+    event TokensBoughtUSD(
         address indexed buyer,
+        string tokenAddress,
         uint256 amount,
         uint256 TokenPrice,
-        uint256 usdtPaid,
-        uint256 ICOStage,
-        uint256 timestamp
-    );
-
-    event TokensBoughtUSDC(
-        address indexed buyer,
-        uint256 amount,
-        uint256 TokenPrice,
-        uint256 usdcPaid,
+        uint256 usdPaid,
         uint256 ICOStage,
         uint256 timestamp
     );
@@ -203,25 +196,44 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         return stages;
     }
 
-    /** 
-        @dev Function to get current active ICO stage
-    */
+    function nextICOStageID() external view returns(uint256) {
+        return latestICOStageID + 1;
+    }
 
-    function getCurrentActiveICOStage() external view returns(uint256) {
-        require(
-            latestICOStageID > 0,
-            "ex1: No ICOs Created Yet"
-        );
-        for(uint _id = latestICOStageID; _id > 0; _id --) {
-            if(
-                (block.timestamp > icoStages[_id].startTime) 
-                && (block.timestamp < icoStages[_id].endTime) 
-                && (icoStages[_id].isActive ==true)
+    /** 
+        @dev Function to get the latest current active ICO stage
+        @return uint256 The ID of the latest active ICO stage
+    */
+    function getCurrentOrNextActiveICOStage() external view returns (string memory, uint256) {
+        require(latestICOStageID > 0, "ex1: No ICOs Created Yet");
+
+        uint256 nextActiveStageID = latestICOStageID + 1;
+        bool nextStageFound = false;
+
+        for (uint _id = 0; _id <= latestICOStageID; _id++) {
+            if (
+                (block.timestamp > icoStages[_id].startTime) &&
+                (block.timestamp < icoStages[_id].endTime) &&
+                (icoStages[_id].isActive == true)
             ) {
-                return _id;
-            }            
+                return ("Current Stage", _id);
+            }
+
+            if (
+                !nextStageFound &&
+                block.timestamp < icoStages[_id].startTime &&
+                icoStages[_id].isActive == true
+            ) {
+                nextActiveStageID = _id;
+                nextStageFound = true;
+            }
         }
-        return 0;
+
+        if (nextStageFound) {
+            return ("Next Active Stage", nextActiveStageID);
+        }
+
+        revert("ex1: No Active or Upcoming ICO Stage Found");
     }
 
     /** 
@@ -277,7 +289,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     **/
     function getLatestETHPrice() public view returns (uint256) {
         (, int256 price, , , ) = aggregatorInterfaceETH.latestRoundData();
-        price = (price * (10 ** 8));
         return uint256(price);
     }
 
@@ -286,7 +297,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     */     
     function getLatestBTCPrice() public view returns (uint256) {
         (, int256 price, , , ) = aggregatorInterfaceBTC.latestRoundData();
-        price = (price * (10 ** 8));
         return uint256(price);
     }
 
@@ -300,7 +310,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _icoStageID
     ) external view returns (uint256 ethAmount) {
         uint256 usdPrice = calculatePrice(amount, _icoStageID);
-        ethAmount = (usdPrice * (10**18)) / getLatestETHPrice();
+        ethAmount = (usdPrice * getLatestETHPrice()) / (10 ** (18+8));  
         return ethAmount;
     }
 
@@ -314,7 +324,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _icoStageID
     ) external view returns (uint256 BTCAmount) {
         uint256 usdPrice = calculatePrice(amount, _icoStageID);
-        BTCAmount = (usdPrice * (10**18)) / getLatestBTCPrice();
+        BTCAmount = (usdPrice * getLatestBTCPrice()) / (10 ** (18+8));
         return BTCAmount;
     }
 
@@ -337,7 +347,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             "ex1Presale: Stage does not exist or is inactive!"
         );
         uint256 tokenValue = icoStages[_icoStageID].tokenPrice;
-        uint256 usdValueUnscaled = ((_amount/(10 ** 18)) * (tokenValue/(10 ** 18)));       
+        uint256 usdValueUnscaled = (_amount * tokenValue)/(10 ** 18);       
         return usdValueUnscaled;
     }
    
@@ -360,11 +370,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             block.timestamp >= icoStages[_icoStageID].startTime && block.timestamp <= icoStages[_icoStageID].endTime,
             "ex1Presale: Invalid Stage Paramaters"
         );
-        uint256 usdValueUnscaled = calculatePrice(_amount, _icoStageID);
-        uint256 usdValue = usdValueUnscaled * (10**18);
+        uint256 usdValue = calculatePrice(_amount, _icoStageID);
 
-        emit TokensBoughtUSDC(
+        string memory USDC = "USDC";
+        emit TokensBoughtUSD(
             msg.sender,
+            USDC,
             _amount,
             icoStages[_icoStageID].tokenPrice,
             usdValue,
@@ -388,6 +399,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         HoldersCumulativeBalance[msg.sender] += _amount;
 
         totalUSDRaised += usdValue;
+        usdRaisedPerStage[_icoStageID] += usdValue;
 
         IERC20(_token).safeTransferFrom(_msgSender(), recievingWallet, usdValue);
         
@@ -410,11 +422,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             block.timestamp >= icoStages[_icoStageID].startTime && block.timestamp <= icoStages[_icoStageID].endTime,
             "ex1Presale: Invalid Stage Paramaters"
         );
-        uint256 usdValueUnscaled = calculatePrice(_amount, _icoStageID);
-        uint256 usdValue = usdValueUnscaled * (10**18);
+        uint256 usdValue = calculatePrice(_amount, _icoStageID);
 
-        emit TokensBoughtUSDT(
+        string memory USDT = "USDT";
+        emit TokensBoughtUSD(
             msg.sender,
+            USDT,
             _amount,
             icoStages[_icoStageID].tokenPrice,
             usdValue,
@@ -438,7 +451,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         HoldersCumulativeBalance[msg.sender] += _amount;
 
         totalUSDRaised += usdValue;
-
+        usdRaisedPerStage[_icoStageID] += usdValue;
+        
         IERC20(_token).safeTransferFrom(_msgSender(), recievingWallet, usdValue);
         
         return true;
@@ -466,7 +480,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         tokensRaisedPerStage[_icoStageID] += _amount;
 
         if (isTokenReleasable) {
-            bool success = IERC20(ex1Token).transfer(_recipient, _amount*(10 ** 18)); 
+            bool success = IERC20(ex1Token).transfer(_recipient, _amount); 
             require(
                 success,
                 "ex1Presale: Token Transfer Failed!"
