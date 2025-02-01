@@ -11,10 +11,10 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "./Interfaces/InterfaceEx1ICO.sol";
 
-contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
+contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    Iex1ICO public icoInterface = Iex1ICO(0x301Cc53ff52Bf79C15249fa25d1e8aE8e222F205);
+    Iex1ICO public icoInterface;
     IERC20 public ex1Token;
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
@@ -28,14 +28,14 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 interval;
         uint256 slicePeriod;
     }
+    mapping(uint256 => claimSchedule) public claimSchedules;
 
-    mapping(address => bool) public isClaimed; 
     mapping(address => uint256) public prevClaimTimestamp;
 
     mapping(uint256 => mapping(address => uint256)) public UserClaimedPerICOStage;
     mapping(uint256 => mapping(address => uint256)) public claimedAmount;
-
-    mapping(uint256 => claimSchedule) public claimSchedules;
+    mapping(uint256 => mapping(address => uint256)) public lastClaimedAmount;
+    mapping(uint256 => mapping(address => uint256)) public balanceLeftToClaim;
 
     event ClaimScheduleCreated(
         uint256 indexed icoStageID,
@@ -46,6 +46,13 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 timestamp
     );
 
+    event TokenClaimed(
+        address indexed beneficairy,
+        uint256 _claimedAmount,
+        uint256 timestamp,
+        uint256 ICOStageID
+    );
+
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -54,13 +61,18 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function initialize() public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
 
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(OWNER_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(OWNER_ROLE, _msgSender());
+        _grantRole(UPGRADER_ROLE, _msgSender());
+        _grantRole(VESTING_AUTHORISER_ROLE, _msgSender());
+
+        icoInterface = Iex1ICO(0x9B8E8c8046763c311b48C56509959104d1AcE1EF);
+        ex1Token = IERC20(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
     }
 
-     /**
+    /**
         @dev Function to set the claim schedule
         @param _icoStageID: The ID of the ICO stage
         @param _startTime: The start time of the claim schedule in unix timestamp
@@ -74,32 +86,26 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 _endTime,
         uint256 _claimInterval,
         uint256 _slicePeriod
-    ) external onlyRole(VESTING_AUTHORISER_ROLE){
-        ( , uint256 endTime, , , ) = icoInterface.icoStages(_icoStageID);
+    ) external onlyRole(VESTING_AUTHORISER_ROLE) {
+        (, uint256 endTime, , , ) = icoInterface.icoStages(_icoStageID);
+        require(_startTime > endTime, "ex1Presale: Token Sale not Ended yet!");
         require(
-            _startTime > endTime, 
-            "ex1Presale: Token Sale not Ended yet!"
-        );
-        require(
-            (_endTime > _startTime) && 
-            (_startTime > 0 || _endTime > 0) && 
-            (_endTime > block.timestamp) && 
-            (_startTime > block.timestamp),
+            (_endTime > _startTime) &&
+                (_startTime > 0 || _endTime > 0) &&
+                (_endTime > block.timestamp) &&
+                (_startTime > block.timestamp),
             "ex1Presale: Invalid Schedule or Parameters!"
         );
         require(
             _claimInterval <= (_endTime - _startTime),
             "ex1Presale: Invalid Cliff Period"
         );
+        require(_claimInterval > 0, "ex1Presal: Claim interval cannot be 0");
         require(
-            _claimInterval > 0,
-            "ex1Presal: Claim interval cannot be 0"
-        );
-        require(
-            _slicePeriod >= 0 && _slicePeriod <= 60, 
+            _slicePeriod >= 0 && _slicePeriod <= 60,
             "ex1Presale: Invalid Slice Period"
         );
-        
+
         claimSchedules[_icoStageID] = claimSchedule({
             icoStageID: _icoStageID,
             startTime: _startTime,
@@ -132,10 +138,10 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             "ex1Presale: Claim Schedule Already Started!"
         );
         require(
-            (_endTime > _startTime) && 
-            (_startTime > 0 || _endTime > 0) && 
-            (_endTime > block.timestamp) && 
-            (_startTime > block.timestamp),
+            (_endTime > _startTime) &&
+                (_startTime > 0 || _endTime > 0) &&
+                (_endTime > block.timestamp) &&
+                (_startTime > block.timestamp),
             "ex1Presale: Invalid Schedule or Parameters!"
         );
         require(
@@ -143,7 +149,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             "ex1Presale: Invalid Cliff Period"
         );
         require(
-            _slicePeriod >= 0 && _slicePeriod <= 60, 
+            _slicePeriod >= 0 && _slicePeriod <= 60,
             "ex1Presale: Invalid Slice Period"
         );
 
@@ -161,40 +167,40 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 _icoStageID
     ) external nonReentrant returns(bool) {
         require(
-            block.timestamp >= claimSchedules[_icoStageID].startTime 
-            && block.timestamp <= claimSchedules[_icoStageID].endTime,
+            block.timestamp >= claimSchedules[_icoStageID].startTime &&
+            block.timestamp <= claimSchedules[_icoStageID].endTime,
             "ex1Presale: Claim Not Active!"
         );
         bool exists = icoInterface.HoldersExist(_icoStageID, _msgSender());
-        require(
-            exists,
-            "ex1Presale: Holder doesn't Exists!"
-        );
-        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender());
-        require(
-            deposits > 0,
-            "ex1Presale: No Tokens to Claim!"
-        );
+        require(exists, "ex1Presale: Holder doesn't Exists!");
+
+        uint256 deposits = icoInterface.UserDepositsPerICOStage( _icoStageID, _msgSender());
+        require(deposits > 0, "ex1Presale: No Tokens to Claim!");
+
         uint256 claimableAmount = calculateClaimableAmount(_msgSender(), _icoStageID);
+        require(claimableAmount > 0, "ex1Presale: No Tokens to Claim!");
         require(
-            claimableAmount > 0,
-            "ex1Presale: No Tokens to Claim!"
-        );
-        require(
-            block.timestamp - prevClaimTimestamp[msg.sender] >= claimSchedules[_icoStageID].interval,
+            block.timestamp - prevClaimTimestamp[_msgSender()] >= claimSchedules[_icoStageID].interval,
             "ex1Presale: Claim Interval Not Reached!"
         );
 
-        claimedAmount[_icoStageID][msg.sender] += claimableAmount;
-        prevClaimTimestamp[msg.sender] = block.timestamp;
+        claimedAmount[_icoStageID][_msgSender()] += claimableAmount;
+        lastClaimedAmount[_icoStageID][_msgSender()] = claimableAmount;        
+        prevClaimTimestamp[_msgSender()] = block.timestamp;
+        
+        uint256 remainingAmount = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender()) - claimedAmount[_icoStageID][_msgSender()];
+        balanceLeftToClaim[_icoStageID][_msgSender()] = remainingAmount; 
 
-        bool success = IERC20(ex1Token).transfer(msg.sender, claimableAmount);
-        require(
-            success,
-            "ex1Presale: Token Transfer Failed!"
+        ex1Token.safeTransfer(_msgSender(), claimableAmount);
+
+        emit TokenClaimed(
+            _msgSender(),
+            claimableAmount,
+            block.timestamp,
+            _icoStageID
         );
         return true;
-    }  
+    }
 
     /**
         @dev Function to calculate the claimable amount
@@ -204,11 +210,17 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function calculateClaimableAmount(
         address _caller,
         uint256 _icoStageID
-    ) public view returns(uint256) {
+    ) public view returns (uint256) {
         claimSchedule memory schedule = claimSchedules[_icoStageID];
-
+        require(
+            balanceLeftToClaim[_icoStageID][_caller] > 0,
+            "No Balance Left to Claim!"
+        );        
         if(block.timestamp < schedule.startTime) {
             return 0;
+        }
+        if(block.timestamp > schedule.endTime) {
+            return balanceLeftToClaim[_icoStageID][_caller];
         }
 
         uint256 totalDeposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
@@ -216,7 +228,7 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 tokenPerSlice = totalDeposits / totalNumberOfSlices;
 
         uint256 elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
-        uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][msg.sender];
+        uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][_msgSender()];
 
         return claimable;
     }
@@ -224,17 +236,21 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function nextClaimTime(
         address _caller,
         uint256 _icoStageID
-    ) public view returns(uint256) {
+    ) public view returns (uint256) {
         require(
-            icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) > 0, 
+            icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) > 0,
             "ex1Presale: No Tokens to Claim!"
         );
-        
+
         claimSchedule memory schedule = claimSchedules[_icoStageID];
-        if(block.timestamp < schedule.startTime) {
+        if (block.timestamp < schedule.startTime) {
             return schedule.startTime;
-        }
-        else {
+        } else if (
+            block.timestamp > schedule.startTime &&
+            prevClaimTimestamp[_caller] == 0
+        ) {
+            return block.timestamp;
+        } else {
             return prevClaimTimestamp[_caller] + schedule.interval;
         }
     }
@@ -245,13 +261,13 @@ contract ICOVesting is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         icoInterface = _icoInterface;
     }
 
-    function updateEX1Token(IERC20 _tokenAddress) external onlyRole(OWNER_ROLE) {
+    function updateEX1Token(
+        IERC20 _tokenAddress
+    ) external onlyRole(OWNER_ROLE) {
         ex1Token = IERC20(_tokenAddress);
     }
 
-    function _authorizeUpgrade(address newImplementation)
-        internal
-        onlyRole(UPGRADER_ROLE)
-        override
-    {}
+    function _authorizeUpgrade(
+        address newImplementation
+    ) internal override onlyRole(UPGRADER_ROLE) {}
 }
