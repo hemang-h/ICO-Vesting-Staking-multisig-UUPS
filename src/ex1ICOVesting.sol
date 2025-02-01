@@ -32,10 +32,8 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
 
     mapping(address => uint256) public prevClaimTimestamp;
 
-    mapping(uint256 => mapping(address => uint256)) public UserClaimedPerICOStage;
     mapping(uint256 => mapping(address => uint256)) public claimedAmount;
     mapping(uint256 => mapping(address => uint256)) public lastClaimedAmount;
-    mapping(uint256 => mapping(address => uint256)) public balanceLeftToClaim;
 
     event ClaimScheduleCreated(
         uint256 indexed icoStageID,
@@ -45,8 +43,7 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 slicePeriod,
         uint256 timestamp
     );
-
-    event TokenClaimed(
+    event TokensClaimed(
         address indexed beneficairy,
         uint256 _claimedAmount,
         uint256 timestamp,
@@ -133,15 +130,16 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 _claimInterval,
         uint256 _slicePeriod
     ) external onlyRole(VESTING_AUTHORISER_ROLE) {
-        require(
-            _startTime == claimSchedules[_icoStageID].startTime,
-            "ex1Presale: Claim Schedule Already Started!"
-        );
+        if(block.timestamp > claimSchedules[_icoStageID].startTime) {
+            require(
+                _startTime == claimSchedules[_icoStageID].startTime,
+                "ex1Presale: Claim Schedule Already Started!"
+            );
+        }
         require(
             (_endTime > _startTime) &&
-                (_startTime > 0 || _endTime > 0) &&
-                (_endTime > block.timestamp) &&
-                (_startTime > block.timestamp),
+            (_startTime > 0 || _endTime > 0) &&
+            (_endTime > block.timestamp),
             "ex1Presale: Invalid Schedule or Parameters!"
         );
         require(
@@ -165,13 +163,17 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
     */
     function claimTokens(
         uint256 _icoStageID
-    ) external nonReentrant returns(bool) {
+    ) external nonReentrant {
         require(
             block.timestamp >= claimSchedules[_icoStageID].startTime &&
             block.timestamp <= claimSchedules[_icoStageID].endTime,
             "ex1Presale: Claim Not Active!"
         );
-        bool exists = icoInterface.HoldersExist(_icoStageID, _msgSender());
+        require(
+            getBalanceLeftToClaim(_icoStageID, _msgSender()) > 0,
+            "No Balance Left to Claim!"
+        );
+        bool exists = icoInterface.HoldersExists(_icoStageID, _msgSender());
         require(exists, "ex1Presale: Holder doesn't Exists!");
 
         uint256 deposits = icoInterface.UserDepositsPerICOStage( _icoStageID, _msgSender());
@@ -187,19 +189,14 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         claimedAmount[_icoStageID][_msgSender()] += claimableAmount;
         lastClaimedAmount[_icoStageID][_msgSender()] = claimableAmount;        
         prevClaimTimestamp[_msgSender()] = block.timestamp;
-        
-        uint256 remainingAmount = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender()) - claimedAmount[_icoStageID][_msgSender()];
-        balanceLeftToClaim[_icoStageID][_msgSender()] = remainingAmount; 
 
         ex1Token.safeTransfer(_msgSender(), claimableAmount);
-
-        emit TokenClaimed(
+        emit TokensClaimed(
             _msgSender(),
             claimableAmount,
             block.timestamp,
             _icoStageID
         );
-        return true;
     }
 
     /**
@@ -212,15 +209,13 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 _icoStageID
     ) public view returns (uint256) {
         claimSchedule memory schedule = claimSchedules[_icoStageID];
-        require(
-            balanceLeftToClaim[_icoStageID][_caller] > 0,
-            "No Balance Left to Claim!"
-        );        
+        
         if(block.timestamp < schedule.startTime) {
             return 0;
         }
         if(block.timestamp > schedule.endTime) {
-            return balanceLeftToClaim[_icoStageID][_caller];
+            uint256 balance = getBalanceLeftToClaim(_icoStageID, _caller);
+            return balance;
         }
 
         uint256 totalDeposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
@@ -254,6 +249,19 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
             return prevClaimTimestamp[_caller] + schedule.interval;
         }
     }
+
+    function getBalanceLeftToClaim( 
+        uint256 _icoStageID, 
+        address _caller
+    ) public view returns(uint256) {
+        uint256 balance = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
+        uint256 claimed = claimedAmount[_icoStageID][_caller];
+        if(claimed > 0) {
+            balance = balance - claimed; 
+            return balance;
+        }
+        else return balance;
+    } 
 
     function updateInterface(
         Iex1ICO _icoInterface
