@@ -165,14 +165,16 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 _icoStageID
     ) external nonReentrant {
         require(
-            block.timestamp >= claimSchedules[_icoStageID].startTime &&
-            block.timestamp <= claimSchedules[_icoStageID].endTime,
+            block.timestamp >= claimSchedules[_icoStageID].startTime,
             "ex1Presale: Claim Not Active!"
         );
+
+        uint256 balance = getBalanceLeftToClaim(_icoStageID, _msgSender());
         require(
-            getBalanceLeftToClaim(_icoStageID, _msgSender()) > 0,
+            balance > 0,
             "No Balance Left to Claim!"
         );
+        
         bool exists = icoInterface.HoldersExists(_icoStageID, _msgSender());
         require(exists, "ex1Presale: Holder doesn't Exists!");
 
@@ -222,7 +224,13 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 totalNumberOfSlices = (schedule.endTime - schedule.startTime) / schedule.slicePeriod;
         uint256 tokenPerSlice = totalDeposits / totalNumberOfSlices;
 
-        uint256 elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
+        uint256 elapsedSlices;
+        if(prevClaimTimestamp[_caller] == 0) {
+            elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
+        }
+        else {
+            elapsedSlices = (block.timestamp - prevClaimTimestamp[_caller])/ schedule.slicePeriod;
+        }
         uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][_msgSender()];
 
         return claimable;
