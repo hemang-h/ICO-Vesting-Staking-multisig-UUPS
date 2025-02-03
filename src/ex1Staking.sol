@@ -16,8 +16,8 @@ import "./Interfaces/InterfaceEx1Vesting.sol";
 contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    Iex1ICO public icoInterface = Iex1ICO(0x301Cc53ff52Bf79C15249fa25d1e8aE8e222F205);
-    IVestingICO public vestingInterface = IVestingICO(0x301Cc53ff52Bf79C15249fa25d1e8aE8e222F205);
+    Iex1ICO public icoInterface;
+    IVestingICO public vestingInterface;
     IERC20 public ex1Token;
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
@@ -33,7 +33,10 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     mapping(uint256 => StakingParamter) public stakingParameters;
 
     mapping(uint256 => mapping(address => bool)) public isStaked;
+    mapping(uint256 => mapping(address => bool)) public unstaked;
+    mapping(uint256 => mapping(address => uint256)) public totalStakedPerICO;
     mapping(uint256 => mapping(address => uint256)) public stakeTimestamp;
+    mapping(uint256 => mapping(address => uint256)) public unstakeTimestamp;
     mapping(uint256 => mapping(address => uint256)) public previousStakingRewardClaimTimestamp;
 
     event StakingRewardClaimed(
@@ -50,10 +53,15 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     function initialize() public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        __ReentrancyGuard_init();
         
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(OWNER_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(OWNER_ROLE, _msgSender());
+        _grantRole(UPGRADER_ROLE, _msgSender());
+        _grantRole(STAKING_AUTHORISER_ROLE, _msgSender());
+        icoInterface = Iex1ICO(0x9B8E8c8046763c311b48C56509959104d1AcE1EF);
+        vestingInterface = IVestingICO(0x7ed257733357d1FDCe59a54B94fbaB75990cfCB7);
+        ex1Token = IERC20(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
     }
 
     /**
@@ -71,15 +79,19 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         ( , uint256 startTime, , , ) = vestingInterface.claimSchedules(_icoStageID);
         require(
             _percentageReturn > 0 && _percentageReturn <= 100,
-            "ex1Presale: Invalid Percentage!"
+            "ex1Staking: Invalid Percentage!"
         );
         require(
             _timePeriodInSeconds > 0,
-            "ex1Presale: Invalid Time Period!"
+            "ex1Staking: Invalid Time Period!"
+        );
+        require (
+            startTime > 0, 
+            "ex1Staking: Vesting Schedule not set for this ICO stage!"
         );
         require(
             startTime > block.timestamp,
-            "ex1Presale: Vesting Schedule Claiming already Initiated"
+            "ex1Staking: Vesting Schedule Claiming already Initiated"
         );
         stakingParameters[_icoStageID] = StakingParamter({
             percentageReturn: _percentageReturn,
@@ -98,20 +110,21 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     ) external returns(bool) {
         uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _msgSender());
         ( , uint256 startTime, , , ) = vestingInterface.claimSchedules(_icoStageID);
-
+        require(
+            getEligibleStakableToken(_icoStageID, _msgSender())> 0,
+            "ex1staking: No Balance available to stake"
+        );
         require(
             deposits > 0,
-            "ex1Presale: No Tokens to Stake!"
+            "ex1Staking: No Tokens to Stake!"
         );
         require(
             block.timestamp <= startTime,
-            "ex1Presale: Staking Not Active!"
+            "ex1Staking: Staking Not Active!"
         );
-        require(
-            !isStaked[_icoStageID][_msgSender()],
-            "ex1Presale: Already Staked!"
-        );
+
         isStaked[_icoStageID][_msgSender()] = true;
+        totalStakedPerICO[_icoStageID][_msgSender()] = deposits;
         stakeTimestamp[_icoStageID][_msgSender()] = block.timestamp;
         previousStakingRewardClaimTimestamp[_icoStageID][_msgSender()] = 0;
         return true;
@@ -125,18 +138,18 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         uint256 _icoStageID
     ) external nonReentrant {
         require(
-            !isStaked[_icoStageID][_msgSender()], 
-            "ex1Presale: Not Staked Yet!"
+            isStaked[_icoStageID][_msgSender()], 
+            "ex1Staking: Not Staked Yet!"
         );
         uint256 reward = calculateStakeReward(_icoStageID, _msgSender());
         require(
             reward > 0,
-            "ex1Presale: No Rewards to Claim!"
+            "ex1Staking: No Rewards to Claim!"
         );
         bool success = IERC20(ex1Token).transfer(_msgSender(), reward);
         require(
             success,
-            "ex1Presale: Token Transfer Failed!"
+            "ex1Staking: Token Transfer Failed!"
         );         
         emit StakingRewardClaimed(
             _msgSender(),
@@ -156,27 +169,42 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     ) internal returns(uint256) {    
         require(
             isStaked[_icoStageID][_caller],
-            "ex1Presale: Not Staked Yet!"
+            "ex1Staking: Not Staked Yet!"
         );
-        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
+        uint256 deposits = totalStakedPerICO[_icoStageID][_caller];
         uint256 userPercentage = (deposits * (stakingParameters[_icoStageID].percentageReturn)) / 100;
         uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
         uint256 reward;
+        uint256 time;
+        uint256 unstakeTime = unstakeTimestamp[_icoStageID][_caller];
+        uint256 stakingEndTime = stakingParameters[_icoStageID]._stakingEndTime;
+        if(unstaked[_icoStageID][_caller] == true && block.timestamp > stakingEndTime) {
+            time = unstakeTime; 
+            stakingEndTime = unstakeTime;
+        } else if (unstaked[_icoStageID][_caller] == true ) {
+            time = unstakeTime;
+        }
+        else {
+            time = block.timestamp;
+        }
 
-        if (block.timestamp < stakingParameters[_icoStageID]._stakingEndTime) {
+        if (block.timestamp < stakingEndTime) {
             if (previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
-                reward = ((block.timestamp - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                reward = ((time - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
                 previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
+                return reward;
             }
             else {
-                reward = ((block.timestamp - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                reward = ((time - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
                 previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
+                return reward;
             }            
         } else {
-            reward = ((stakingParameters[_icoStageID]._stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+            reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
             isStaked[_icoStageID][_caller] = false;
+            unstaked[_icoStageID][_caller] = true;
+            return reward;
         }
-        return reward;
     }
     /**
         @dev Function to view claimable rewards
@@ -189,18 +217,45 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     ) external view returns(uint256) {
         require(
             isStaked[_icoStageID][_caller],
-            "ex1Presale: Not Staked Yet!"
+            "ex1Staking: Not Staked Yet!"
         );
-        uint256 deposits = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller);
-        uint256 userPercentage = deposits * (stakingParameters[_icoStageID].percentageReturn / 100);
-        uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds;
+        uint256 deposits = totalStakedPerICO[_icoStageID][_caller]; 
+        uint256 userPercentage = (deposits * stakingParameters[_icoStageID].percentageReturn )/ 100; 
+        uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds; 
         uint256 reward;
-        if(previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
-            return reward = reward = ((block.timestamp - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+        uint256 time;
+        uint256 unstakeTime = unstakeTimestamp[_icoStageID][_caller];
+        uint256 stakingEndTime = stakingParameters[_icoStageID]._stakingEndTime;
+        if(unstaked[_icoStageID][_caller] == true && block.timestamp > stakingEndTime) {
+            time = unstakeTime; 
+            stakingEndTime = unstakeTime;
+        } else if (unstaked[_icoStageID][_caller] == true ) {
+            time = unstakeTime;
         }
         else {
-            return reward = reward = ((block.timestamp - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+            time = block.timestamp;
         }
+        if (block.timestamp < stakingEndTime) {
+            if (previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
+                reward = ((time - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                return reward;
+            }
+            else {
+                reward = ((time - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                return reward;
+            }            
+        } else {
+            reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+            return reward;
+        }
+    }
+
+    function getEligibleStakableToken(
+        uint256 _icoStageID,
+        address _caller
+    ) public view returns(uint256) {
+        uint256 balance = icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) - totalStakedPerICO[_icoStageID][_caller];
+        return balance;
     }
 
     /**
@@ -212,9 +267,12 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
     ) external returns(bool) {
         require(
             isStaked[_icoStageID][_msgSender()],
-            "ex1Presale: Not Staked Yet!"
+            "ex1Staking: Not Staked Yet!"
         );
         isStaked[_icoStageID][_msgSender()] = false;
+        unstaked[_icoStageID][_msgSender()] = true;
+        unstakeTimestamp[_icoStageID][_msgSender()] = block.timestamp;
+
         return true;
     }
 
@@ -235,5 +293,4 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         onlyRole(UPGRADER_ROLE)
         override
     {}
-
 }
