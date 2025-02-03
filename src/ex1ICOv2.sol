@@ -14,13 +14,13 @@ import "./Interfaces/IAggregator.sol";
 contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
-    IERC20 public ex1Token = IERC20(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
+    IERC20 public ex1Token;
 
-    IERC20 public USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
-    IERC20 public USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
+    IERC20 public USDCAddress;
+    IERC20 public USDTAddress;
 
-    IAggregator public aggregatorInterfaceETH = IAggregator(0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7);
-    IAggregator public aggregatorInterfaceBTC = IAggregator(0x5741306c21795FdCBb9b265Ea0255F499DFe515C);
+    IAggregator public aggregatorInterfaceETH;
+    IAggregator public aggregatorInterfaceBTC;
 
     bytes32 public constant ETH_TXN_RECORDER_ROLE = keccak256("ETH_TXN_RECORDER_ROLE");
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
@@ -100,15 +100,22 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         _disableInitializers();
     }
 
-    function initialize(address _ex1Token) public initializer {
+    function initialize() public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
         
-        ex1Token = IERC20(_ex1Token);
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OWNER_ROLE, msg.sender);
         _grantRole(UPGRADER_ROLE, msg.sender);
         _grantRole(ICO_AUTHORISER_ROLE, msg.sender);
+
+        ex1Token = IERC20(0xaC7423Fe80bdab130cE3339Aa1C4ECcC7D5A82b6);
+
+        USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
+        USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
+
+        aggregatorInterfaceETH = IAggregator(0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7);
+        aggregatorInterfaceBTC = IAggregator(0x5741306c21795FdCBb9b265Ea0255F499DFe515C);
     }
 
     function _authorizeUpgrade(address newImplementation)
