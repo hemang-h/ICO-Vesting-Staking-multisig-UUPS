@@ -30,7 +30,7 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
     }
     mapping(uint256 => claimSchedule) public claimSchedules;
 
-    mapping(address => uint256) public prevClaimTimestamp;
+    mapping(uint256 => mapping(address => uint256)) public prevClaimTimestamp;
 
     mapping(uint256 => mapping(address => uint256)) public claimedAmount;
     mapping(uint256 => mapping(address => uint256)) public lastClaimedAmount;
@@ -66,7 +66,7 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         _grantRole(VESTING_AUTHORISER_ROLE, _msgSender());
 
         icoInterface = Iex1ICO(0x9B8E8c8046763c311b48C56509959104d1AcE1EF);
-        ex1Token = IERC20(0x6B1fdD1E4b2aE9dE8c5764481A8B6d00070a3096);
+        ex1Token = IERC20(0xaC7423Fe80bdab130cE3339Aa1C4ECcC7D5A82b6);
     }
 
     /**
@@ -184,13 +184,13 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 claimableAmount = calculateClaimableAmount(_msgSender(), _icoStageID);
         require(claimableAmount > 0, "ex1Presale: No Tokens to Claim!");
         require(
-            block.timestamp - prevClaimTimestamp[_msgSender()] >= claimSchedules[_icoStageID].interval,
+            block.timestamp - prevClaimTimestamp[_icoStageID][_msgSender()] >= claimSchedules[_icoStageID].interval,
             "ex1Presale: Claim Interval Not Reached!"
         );
 
         claimedAmount[_icoStageID][_msgSender()] += claimableAmount;
         lastClaimedAmount[_icoStageID][_msgSender()] = claimableAmount;        
-        prevClaimTimestamp[_msgSender()] = block.timestamp;
+        prevClaimTimestamp[_icoStageID][_msgSender()] = block.timestamp;
 
         ex1Token.safeTransfer(_msgSender(), claimableAmount);
         emit TokensClaimed(
@@ -225,11 +225,11 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 tokenPerSlice = totalDeposits / totalNumberOfSlices;
 
         uint256 elapsedSlices;
-        if(prevClaimTimestamp[_caller] == 0) {
+        if(prevClaimTimestamp[_icoStageID][_caller] == 0) {
             elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
         }
         else {
-            elapsedSlices = (block.timestamp - prevClaimTimestamp[_caller])/ schedule.slicePeriod;
+            elapsedSlices = (block.timestamp - prevClaimTimestamp[_icoStageID][_caller])/ schedule.slicePeriod;
         }
         uint256 claimable = tokenPerSlice * elapsedSlices - claimedAmount[_icoStageID][_msgSender()];
 
@@ -244,17 +244,19 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
             icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) > 0,
             "ex1Presale: No Tokens to Claim!"
         );
-
+        if(getBalanceLeftToClaim(_icoStageID, _caller) == 0) {
+            return 0;
+        }
         claimSchedule memory schedule = claimSchedules[_icoStageID];
         if (block.timestamp < schedule.startTime) {
             return schedule.startTime;
         } else if (
             block.timestamp > schedule.startTime &&
-            prevClaimTimestamp[_caller] == 0
+            prevClaimTimestamp[_icoStageID][_caller] == 0
         ) {
             return block.timestamp;
         } else {
-            return prevClaimTimestamp[_caller] + schedule.interval;
+            return prevClaimTimestamp[_icoStageID][_caller] + schedule.interval;
         }
     }
 
