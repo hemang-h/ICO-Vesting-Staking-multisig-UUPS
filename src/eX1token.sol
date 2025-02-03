@@ -12,7 +12,6 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
     using EnumerableSet for EnumerableSet.AddressSet;
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
-    bytes32 public constant ADDER_ROLE = keccak256("ADDER_ROLE");
     bytes32 public constant APPROVER_ROLE = keccak256("APPROVER_ROLE");
 
     struct Transaction {
@@ -46,7 +45,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
     }
 
     modifier notApproved(uint256 _txIndex) {
-        require(!approved[_txIndex][msg.sender], "tx already approved");
+        require(!approved[_txIndex][_msgSender()], "tx already approved");
         _;
     }
 
@@ -62,6 +61,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         __ERC20_init("eXchange1", "eX1");
         __AccessControl_init();
         __UUPSUpgradeable_init();
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
         
         require(_approver.length > 0, "Approver required");
         require(_required > 0 && _required <= _approver.length, "invalid required number");
@@ -77,7 +77,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         }
         required = _required;
         
-        _mint(msg.sender, 369_000_000 * 10 ** 18);
+        _mint(_msgSender(), 369_000_000 * 10 ** 18);
     }
 
     function updateApprovers(address[] memory _approver, bool[] memory status) external onlyRole(DEFAULT_ADMIN_ROLE) {
@@ -122,7 +122,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
     }
 
     function proposeTransfer(address _from, address _to, uint256 _value) external onlyRole(APPROVER_ROLE) returns (uint256) {
-        require(isApprover[msg.sender] == true, "Approver Status Held!");
+        require(isApprover[_msgSender()] == true, "Approver Status Held!");
         transactions.push(Transaction({
             from: _from,
             to: _to,
@@ -141,12 +141,12 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         notExecuted(_txIndex)
         notApproved(_txIndex)
     {
-        require(isApprover[msg.sender] == true, "Approver Status Held!");
+        require(isApprover[_msgSender()] == true, "Approver Status Held!");
 
-        approved[_txIndex][msg.sender] = true;
+        approved[_txIndex][_msgSender()] = true;
         transactions[_txIndex].approvalCount += 1;
 
-        emit TransferApproved(_txIndex, msg.sender);
+        emit TransferApproved(_txIndex, _msgSender());
 
         if (transactions[_txIndex].approvalCount >= required) {
             executeTransfer(_txIndex);
@@ -159,14 +159,14 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         txExists(_txIndex)
         notExecuted(_txIndex)
     {
-        require(isApprover[msg.sender] == true, "Approver Status Held!");
+        require(isApprover[_msgSender()] == true, "Approver Status Held!");
         
-        require(approved[_txIndex][msg.sender], "tx not approved");
+        require(approved[_txIndex][_msgSender()], "tx not approved");
 
-        approved[_txIndex][msg.sender] = false;
+        approved[_txIndex][_msgSender()] = false;
         transactions[_txIndex].approvalCount -= 1;
 
-        emit ApprovalRevoked(_txIndex, msg.sender);
+        emit ApprovalRevoked(_txIndex, _msgSender());
     }
 
     function executeTransfer(uint256 _txIndex)
