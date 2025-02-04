@@ -20,5 +20,5 @@ contract ex1Staking is Script {
 }
 
 /*
-    Deployment script: forge script script/icoStaking.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify  
+    Deployment script: forge script script/DeployStaking/icoStaking.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify  
 */

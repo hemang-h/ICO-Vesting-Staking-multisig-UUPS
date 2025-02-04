@@ -35,8 +35,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         bool isActive;
     }
 
-    uint256 public MaxTokenLimitPerAddress = 10000000000000 * 10 ** 18;
-    uint256 public MaxTokenLimitPerTransaction = 10000000000000 * 10 ** 18;
+    uint256 public MaxTokenLimitPerAddress;
+    uint256 public MaxTokenLimitPerTransaction;
 
     uint256 public totalTokensSold;
     uint256 public totalBuyers;
@@ -57,7 +57,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
 
     mapping(uint256 => ICOStage) public icoStages;
 
-    address public recievingWallet = 0x52C1ffFb760F653fe648F396747967Bb1971eb38;    
+    address public recievingWallet;  
     bool public isTokenReleasable; 
 
     event TokensBoughtUSD(
@@ -109,13 +109,18 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         _grantRole(UPGRADER_ROLE, msg.sender);
         _grantRole(ICO_AUTHORISER_ROLE, msg.sender);
 
-        ex1Token = IERC20(0xaC7423Fe80bdab130cE3339Aa1C4ECcC7D5A82b6);
+        ex1Token = IERC20(0x000e49F0741609f4DC7f9641BB6c1F009c984A60);
 
         USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
         USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
 
         aggregatorInterfaceETH = IAggregator(0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7);
         aggregatorInterfaceBTC = IAggregator(0x5741306c21795FdCBb9b265Ea0255F499DFe515C);
+
+        recievingWallet = 0x52C1ffFb760F653fe648F396747967Bb1971eb38;
+
+        MaxTokenLimitPerAddress = 1_000_000 * 10 ** 18;
+        MaxTokenLimitPerTransaction = 100_000 * 10 ** 18;
     }
 
     function _authorizeUpgrade(address newImplementation)

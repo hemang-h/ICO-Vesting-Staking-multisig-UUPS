@@ -11,6 +11,12 @@ import "@openzeppelin/contracts-upgradeable/utils/ReentrancyGuardUpgradeable.sol
 import "@openzeppelin/contracts/proxy/ERC1967/ERC1967Proxy.sol";
 import "./Interfaces/InterfaceEx1ICO.sol";
 
+/**
+ * @title ICOVesting
+ * @dev This contract handles the vesting and claiming of tokens purchased during an ICO.
+ * It allows the creation and management of claim schedules, and users can claim their tokens
+ * according to the defined vesting rules.
+ */
 contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardUpgradeable, UUPSUpgradeable {
     using SafeERC20 for IERC20;
 
@@ -55,6 +61,9 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         _disableInitializers();
     }
 
+    /**
+     * @dev Initializes the contract, setting up roles and initializing the ICO interface and token.
+     */
     function initialize() public initializer {
         __AccessControl_init();
         __UUPSUpgradeable_init();
@@ -65,8 +74,8 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         _grantRole(UPGRADER_ROLE, _msgSender());
         _grantRole(VESTING_AUTHORISER_ROLE, _msgSender());
 
-        icoInterface = Iex1ICO(0x9B8E8c8046763c311b48C56509959104d1AcE1EF);
-        ex1Token = IERC20(0xaC7423Fe80bdab130cE3339Aa1C4ECcC7D5A82b6);
+        icoInterface = Iex1ICO(0x97881e9e266c3EE26D553e17fcb0bcdcDD5F376d);
+        ex1Token = IERC20(0x000e49F0741609f4DC7f9641BB6c1F009c984A60);
     }
 
     /**
@@ -168,6 +177,11 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
             block.timestamp >= claimSchedules[_icoStageID].startTime,
             "ex1Presale: Claim Not Active!"
         );
+        require(
+            claimSchedules[_icoStageID].startTime > 0 &&
+            claimSchedules[_icoStageID].endTime > 0,
+            "ex1Presale: Vesting Schedule not found!"
+        );
 
         uint256 balance = getBalanceLeftToClaim(_icoStageID, _msgSender());
         require(
@@ -211,6 +225,11 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         uint256 _icoStageID
     ) public view returns (uint256) {
         claimSchedule memory schedule = claimSchedules[_icoStageID];
+        require(
+            schedule.startTime > 0 &&
+            schedule.endTime > 0,
+            "ex1Presale: Vesting Schedule not found!"
+        );
         
         if(block.timestamp < schedule.startTime) {
             return 0;
@@ -236,6 +255,12 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         return claimable;
     }
 
+    /**
+     * @dev Returns the next claim time for a specific user and ICO stage.
+     * @param _caller The address of the caller.
+     * @param _icoStageID The ID of the ICO stage.
+     * @return The next claim time in Unix timestamp.
+     */
     function nextClaimTime(
         address _caller,
         uint256 _icoStageID
@@ -244,10 +269,15 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
             icoInterface.UserDepositsPerICOStage(_icoStageID, _caller) > 0,
             "ex1Presale: No Tokens to Claim!"
         );
+        claimSchedule memory schedule = claimSchedules[_icoStageID];
+        require(
+            schedule.startTime > 0 &&
+            schedule.endTime > 0,
+            "ex1Presale: Vesting Schedule not found!"
+        );
         if(getBalanceLeftToClaim(_icoStageID, _caller) == 0) {
             return 0;
         }
-        claimSchedule memory schedule = claimSchedules[_icoStageID];
         if (block.timestamp < schedule.startTime) {
             return schedule.startTime;
         } else if (
@@ -260,6 +290,12 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         }
     }
 
+    /**
+     * @dev Returns the remaining balance of tokens that can be claimed by a user for a specific ICO stage.
+     * @param _icoStageID The ID of the ICO stage.
+     * @param _caller The address of the caller.
+     * @return The remaining balance of tokens that can be claimed.
+     */
     function getBalanceLeftToClaim( 
         uint256 _icoStageID, 
         address _caller
@@ -273,19 +309,25 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         else return balance;
     } 
 
-    function updateInterface(
-        Iex1ICO _icoInterface
-    ) external onlyRole(OWNER_ROLE) {
+    /**
+     * @dev Updates the ICO interface address.
+     * @param _icoInterface The new ICO interface address.
+     */
+    function updateInterface(Iex1ICO _icoInterface) external onlyRole(OWNER_ROLE) {
         icoInterface = _icoInterface;
     }
 
-    function updateEX1Token(
-        IERC20 _tokenAddress
-    ) external onlyRole(OWNER_ROLE) {
+    /**
+     * @dev Updates the EX1 token address.
+     * @param _tokenAddress The new EX1 token address.
+     */
+    function updateEX1Token(IERC20 _tokenAddress) external onlyRole(OWNER_ROLE) {
         ex1Token = IERC20(_tokenAddress);
     }
 
-    function _authorizeUpgrade(
-        address newImplementation
-    ) internal override onlyRole(UPGRADER_ROLE) {}
+    /**
+     * @dev Authorizes an upgrade to a new implementation.
+     * @param newImplementation The address of the new implementation.
+     */
+    function _authorizeUpgrade(address newImplementation) internal override onlyRole(UPGRADER_ROLE) {}
 }

@@ -8,7 +8,7 @@ import "forge-std/Script.sol";
 contract DeployUUPSProxy is Script {
     function run() public {
 
-        address _implementation = 0x709752f72e8EB35C703Db824068EB2689c21f94E; // Replace with your token address
+        address _implementation = 0xff75080a5eeB88dE6746a0388CDc658E78b1Fc81; // Replace with your token address
         vm.startBroadcast();
 
         // Encode the initializer function call
