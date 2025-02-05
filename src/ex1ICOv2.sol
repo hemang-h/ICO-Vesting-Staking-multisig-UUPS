@@ -109,7 +109,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         _grantRole(UPGRADER_ROLE, msg.sender);
         _grantRole(ICO_AUTHORISER_ROLE, msg.sender);
 
-        ex1Token = IERC20(0x000e49F0741609f4DC7f9641BB6c1F009c984A60);
+        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
 
         USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
         USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
