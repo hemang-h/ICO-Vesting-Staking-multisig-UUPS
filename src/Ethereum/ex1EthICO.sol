@@ -31,7 +31,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant ICO_AUTHORISER_ROLE = keccak256("ICO_AUTHORISER_ROLE");
 
-    IAggregator public aggregatorInterfaceETH = IAggregator(0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7);
+    IAggregator public aggregatorInterfaceETH;
 
     struct ICOStage{
         uint256 startTime;
@@ -63,8 +63,8 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 tokenPrice
     );
 
-    uint256 public MaxTokenLimitPerAddress = 10000000000000 * 10 ** 18;
-    uint256 public MaxTokenLimitPerTransaction = 10000000000000 * 10 ** 18;
+    uint256 public MaxTokenLimitPerAddress;
+    uint256 public MaxTokenLimitPerTransaction;
 
     uint256 public totalBuyers;
     uint256 public totalETHRaised;
@@ -98,8 +98,15 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         __AccessControl_init();
         __UUPSUpgradeable_init();
         
-        _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
-        _grantRole(OWNER_ROLE, msg.sender);
+        _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(OWNER_ROLE, _msgSender());
+        _grantRole(ICO_AUTHORISER_ROLE, _msgSender());
+        _grantRole(UPGRADER_ROLE, _msgSender());
+
+        MaxTokenLimitPerAddress = 10000000000000 * 10 ** 18;
+        MaxTokenLimitPerTransaction = 10000000000000 * 10 ** 18;
+        aggregatorInterfaceETH = IAggregator(0x694AA1769357215DE4FAC081bf1f309aDC325306);
+        receivingWallet = 0xd7BfFa422717c0175622296208bBcA8D61B8c3bd;
     }
 
     function createICOStage(
@@ -181,7 +188,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _icoStageID
     ) public view returns(uint256) {
          require (
-            _amount < MaxTokenLimitPerTransaction || HoldersCummulativeBalance[msg.sender] < MaxTokenLimitPerAddress,
+            _amount < MaxTokenLimitPerTransaction || HoldersCummulativeBalance[_msgSender()] < MaxTokenLimitPerAddress,
             "ex1Presale: Max Limit Reached!"
         );
         require(
@@ -207,12 +214,12 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             "EthPayment: Insufficient Eths Value signed!"
         );
         tokensRaisedPerStage[_icoStageID] += _amount;
-        if (!HoldersExists[_icoStageID][msg.sender]) {
+        if (!HoldersExists[_icoStageID][_msgSender()]) {
             totalBuyers ++;
-            HoldersExists[_icoStageID][msg.sender] = true;
+            HoldersExists[_icoStageID][_msgSender()] = true;
         }
-        HoldersCummulativeBalance[msg.sender] += _amount;
-        UserDepositsPerICOStage[_icoStageID][msg.sender] += _amount;
+        HoldersCummulativeBalance[_msgSender()] += _amount;
+        UserDepositsPerICOStage[_icoStageID][_msgSender()] += _amount;
         totalETHRaised += ethAmount;
         
         (bool success, ) = payable(receivingWallet).call{value: msg.value}("");
