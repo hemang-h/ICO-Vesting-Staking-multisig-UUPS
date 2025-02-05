@@ -62,9 +62,9 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         _grantRole(OWNER_ROLE, _msgSender());
         _grantRole(UPGRADER_ROLE, _msgSender());
         _grantRole(STAKING_AUTHORISER_ROLE, _msgSender());
-        icoInterface = Iex1ICO(0x97881e9e266c3EE26D553e17fcb0bcdcDD5F376d);
-        vestingInterface = IVestingICO(0x1263D7aDDBB8aaa7452026d5cEA4836Ab710C8B1);
-        ex1Token = IERC20(0x000e49F0741609f4DC7f9641BB6c1F009c984A60);
+        icoInterface = Iex1ICO(0x79823739fe6991921c5fA8AECded1d1b50be08f3);
+        vestingInterface = IVestingICO(0x6933A9eBf29F3299014e8E5477A23E44e74540f6);
+        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
     }
 
     /**
@@ -217,11 +217,23 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
                 previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
                 return reward;
             }            
-        } else {
-            reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-            isStaked[_icoStageID][_caller] = false;
-            unstaked[_icoStageID][_caller] = true;
-            return reward;
+        } 
+
+        else {
+            if (previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
+                reward = ((stakingEndTime - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
+                isStaked[_icoStageID][_caller] = false;
+                unstaked[_icoStageID][_caller] = true;
+                return reward;
+            }
+            else {
+                reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                previousStakingRewardClaimTimestamp[_icoStageID][_caller] = block.timestamp;
+                isStaked[_icoStageID][_caller] = false;
+                unstaked[_icoStageID][_caller] = true;
+                return reward;
+            }
         }
     }
     /**
@@ -246,15 +258,14 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             "ex1Staking: No Tokens Staked"
         );
 
-
         uint256 userPercentage = (deposits * stakingParameters[_icoStageID].percentageReturn )/ 100; 
         uint256 userRewardPerSecond = userPercentage / stakingParameters[_icoStageID].timePeriodInSeconds; 
 
         uint256 reward;
         uint256 time;
 
-        uint256 unstakeTime = unstakeTimestamp[_icoStageID][_caller];
-        uint256 stakingEndTime = stakingParameters[_icoStageID]._stakingEndTime;
+        uint256 unstakeTime = unstakeTimestamp[_icoStageID][_caller]; 
+        uint256 stakingEndTime = stakingParameters[_icoStageID]._stakingEndTime; 
 
         if(unstaked[_icoStageID][_caller] == true && block.timestamp > stakingEndTime) {
             time = unstakeTime; 
@@ -263,7 +274,7 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
             time = unstakeTime;
         }
         else {
-            time = block.timestamp;
+            time = block.timestamp; 
         }
 
         if (block.timestamp < stakingEndTime) {
@@ -276,8 +287,14 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
                 return reward;
             }            
         } else {
-            reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
-            return reward;
+            if (previousStakingRewardClaimTimestamp[_icoStageID][_caller] == 0) {
+                reward = ((stakingEndTime - stakeTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                return reward;
+            }
+            else {
+                reward = ((stakingEndTime - previousStakingRewardClaimTimestamp[_icoStageID][_caller]) * userRewardPerSecond);
+                return reward;
+            }
         }
     }
 
