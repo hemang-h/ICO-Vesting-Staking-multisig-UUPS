@@ -18,6 +18,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
 
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant APPROVER_ROLE = keccak256("APPROVER_ROLE");
+    bytes32 public constant EXECUTOR_ROLE = keccak256("EXECUTOR_ROLE");
 
     /**
      * @dev Struct representing a proposed transaction.
@@ -92,6 +93,8 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         __AccessControl_init();
         __UUPSUpgradeable_init();
         _grantRole(DEFAULT_ADMIN_ROLE, _msgSender());
+        _grantRole(EXECUTOR_ROLE, _msgSender());
+        _grantRole(OWNER_ROLE, _msgSender());
         
         require(_approver.length > 0, "Approver required");
         require(_required > 0 && _required <= _approver.length, "invalid required number");
@@ -116,7 +119,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
      * @param status The list of statuses to set for each approver.
      */
     function updateApprovers(address[] memory _approver, bool[] memory status) external onlyRole(DEFAULT_ADMIN_ROLE) {
-        require(_approver.length == status.length, "Lenght Mismatched!");
+        require(_approver.length == status.length, "Length Mismatched!");
         for(uint i = 0; i< _approver.length; i++) {
             isApprover[_approver[i]] = status[i];
         }
@@ -183,26 +186,6 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
     }
 
     /**
-     * @dev Proposes a new transfer transaction (external version).
-     * @param _from The address initiating the transfer.
-     * @param _to The address receiving the tokens.
-     * @param _value The amount of tokens to transfer.
-     * @return uint256 The index of the proposed transaction.
-     */
-    function proposeTransfer(address _from, address _to, uint256 _value) external onlyRole(APPROVER_ROLE) returns (uint256) {
-        require(isApprover[_msgSender()] == true, "Approver Status Held!");
-        transactions.push(Transaction({
-            from: _from,
-            to: _to,
-            value: _value,
-            executed: false,
-            approvalCount: 0
-        }));
-        
-        return transactions.length - 1;
-    }
-
-    /**
      * @dev Approves a proposed transfer transaction.
      * @param _txIndex The index of the transaction to approve.
      */
@@ -221,7 +204,7 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         emit TransferApproved(_txIndex, _msgSender());
 
         if (transactions[_txIndex].approvalCount >= required) {
-            executeTransfer(_txIndex);
+            _executeTransfer(_txIndex);
         }
     }
 
@@ -249,8 +232,8 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
      * @dev Executes a proposed transfer transaction.
      * @param _txIndex The index of the transaction to execute.
      */
-    function executeTransfer(uint256 _txIndex)
-        public
+    function _executeTransfer(uint256 _txIndex)
+        internal
         txExists(_txIndex)
         notExecuted(_txIndex)
     {
@@ -263,6 +246,16 @@ contract EX1 is Initializable, ERC20Upgradeable, AccessControlUpgradeable, UUPSU
         _transfer(transaction.from, transaction.to, transaction.value);
 
         emit TransferExecuted(_txIndex);
+    }
+
+    function executeTransfer(uint256 _txIndex)
+        external 
+        txExists(_txIndex)
+        notExecuted(_txIndex)
+        onlyRole(DEFAULT_ADMIN_ROLE)
+        onlyRole(EXECUTOR_ROLE) 
+    {
+        _executeTransfer(_txIndex);
     }
 
     /**
