@@ -31,7 +31,7 @@ The eX1 Token is an ERC20-compliant smart contract with multi-signature function
 
 ```mermaid
 graph TD
-    A[User calls transfer(to, value)] --> B{Is sender restricted?}
+    A["User calls transfer to value"] --> B{Is sender restricted?}
     B -->|No| C[Execute transfer immediately]
     C --> D[Update balances]
 ```
@@ -40,7 +40,7 @@ graph TD
 
 ```mermaid
 graph TD
-    A[Restricted User calls transfer(to, value)] --> B{Is sender restricted?}
+    A["Restricted User calls transfer"] --> B{Is sender restricted?}
     B -->|Yes| C[Create Transfer Proposal]
     C --> D[Emit TransferProposed event]
     D --> E[Approvers review proposal]
