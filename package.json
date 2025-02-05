@@ -1,5 +1,6 @@
 {
   "dependencies": {
-    "ethers": "^6.13.5"
+    "ethers": "^6.13.5",
+    "mermaid": "^11.4.1"
   }
 }
