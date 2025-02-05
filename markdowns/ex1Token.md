@@ -12,7 +12,7 @@ The eX1 Token is an ERC20-compliant smart contract with multi-signature function
 
 | Proxy                 | Implementation   |
 |-----------------------|------------------|
-|                       |                  |
+|https://testnet.bscscan.com/address/0xdfdac872759a486c62854c00535d7f3093ad62b5#code|https://testnet.bscscan.com/address/0x8721891cb7efc6f1837dd2131db8fdac0474510e#code|
 
 ## Roles and Permissions
 
