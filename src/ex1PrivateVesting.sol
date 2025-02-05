@@ -62,12 +62,12 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
     /// @dev Mapping from vesting schedule ID to beneficiary address to the last claimed amount.
     mapping(uint256 => mapping(address => uint256)) lastClaimedAmount;
 
+    mapping(address => uint256[]) public beneficiarySchedules;
+
     /// @dev The latest vesting schedule ID.
     uint256 public latestVestingScheduleID;
 
     uint256[] public scheduleIDs;
-
-
 
     event VestingScheduleCreated(
         address beneficiary,
@@ -127,7 +127,7 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
         _grantRole(OWNER_ROLE, msg.sender);
         _grantRole(VESTING_CREATOR_ROLE, msg.sender);
         _grantRole(UPGRADER_ROLE, msg.sender);
-        ex1Token = IERC20(0x000e49F0741609f4DC7f9641BB6c1F009c984A60);
+        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
     }
 
     /**
@@ -194,6 +194,7 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
         });
 
         scheduleIDs.push(latestVestingScheduleID);
+        beneficiarySchedules[_beneficiary].push(latestVestingScheduleID);
         
         emit VestingScheduleCreated(
             _beneficiary, 
@@ -280,7 +281,7 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
     {
         VestingSchedule storage schedule = vestingSchedules[_vestingScheduleID];
         require(_msgSender() == schedule.beneficiary, "Not beneficiary");
-        require(block.timestamp > schedule.cliffPeriod, "PrivateVesting: Cliff Period Not ended");
+        require(block.timestamp >= schedule.cliffPeriod, "PrivateVesting: Cliff Period Not ended");
         require(
             block.timestamp - lastClaimedTimestamp[_vestingScheduleID] >= schedule.claimInterval,
             "PrivateVesting: Claim Interval Not reached"
@@ -309,7 +310,10 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
      * @return The amount of tokens that can be claimed.
      */
     function calculateClaimableAmount(uint256 _vestingScheduleID) 
-        public view 
+        public 
+        view 
+        onlyValidSchedule(_vestingScheduleID)
+        notRevoked(_vestingScheduleID)
         returns(uint256) 
     {
         VestingSchedule storage schedule = vestingSchedules[_vestingScheduleID];
@@ -321,17 +325,17 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
             uint256 balance = schedule.totalAmount - schedule.releasedAmount;
             return balance;
         }
-        uint256 totalNumberOfSlices = (schedule.endTime - schedule.startTime) / schedule.slicePeriod;
+        uint256 totalNumberOfSlices = (schedule.endTime - schedule.cliffPeriod) / schedule.slicePeriod;
         uint256 tokenPerSlice = schedule.totalAmount / totalNumberOfSlices;
 
         uint256 elapsedSlices;
         if(lastClaimedTimestamp[_vestingScheduleID] == 0) {
-            elapsedSlices = (block.timestamp - schedule.startTime) / schedule.slicePeriod;
+            elapsedSlices = (block.timestamp - schedule.cliffPeriod) / schedule.slicePeriod;
         }
         else {
             elapsedSlices = (block.timestamp - lastClaimedTimestamp[_vestingScheduleID])/ schedule.slicePeriod;
         }
-        uint256 claimable = tokenPerSlice * elapsedSlices - schedule.releasedAmount;
+        uint256 claimable = tokenPerSlice * elapsedSlices;
         return claimable;
     }
 
@@ -366,13 +370,9 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
      */
     function nextClaimTime(
         uint256 _vestingScheduleID
-    ) public view onlyValidSchedule(_vestingScheduleID) returns (uint256) {
+    ) public view onlyValidSchedule(_vestingScheduleID) notRevoked(_vestingScheduleID) returns (uint256) {
         VestingSchedule storage schedule = vestingSchedules[_vestingScheduleID];
 
-        require(
-            schedule.releasedAmount > 0,
-            "ex1Presale: No Tokens to Claim!"
-        );
         if(getBalanceLeftToClaim(_vestingScheduleID) == 0) {
             return 0;
         }
@@ -405,6 +405,10 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
             schedule[i] = vestingSchedules[scheduleIDs[i]];
         }
         return schedule;
+    }
+
+    function getBeneficiarySchedules(address _beneficiary) external view returns (uint256[] memory) {
+        return beneficiarySchedules[_beneficiary];
     }
 
     /**
