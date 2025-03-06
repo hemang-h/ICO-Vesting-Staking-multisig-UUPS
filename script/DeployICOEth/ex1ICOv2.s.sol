@@ -20,3 +20,11 @@ contract DeployTokenImplementation is Script {
 /*
 forge script script/DeployICOEth/ex1ICOv2.s.sol --rpc-url=$ETH_HOLESKY_RPC_URL --private-key=$ETH_HOLESKY_PRIVATE_KEY --broadcast --etherscan-api-key=$ETH_HOLESKY_API_KEY --verify  
 */
+
+/*
+forge script script/DeployICOEth/ex1ICOv2.s.sol --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify  
+*/
+
+/*
+forge script script/DeployICOEth/ex1ICOv2.s.sol --rpc-url=$TESTNET_RPC_URL --private-key=$TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$TESTNET_API_KEY --verify 
+*/
