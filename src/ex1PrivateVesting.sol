@@ -127,7 +127,7 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
         _grantRole(OWNER_ROLE, msg.sender);
         _grantRole(VESTING_CREATOR_ROLE, msg.sender);
         _grantRole(UPGRADER_ROLE, msg.sender);
-        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
+        ex1Token = IERC20(0x47746b1a039826dcd41F7797a756A6cD353F239F);
     }
 
     /**
@@ -260,13 +260,14 @@ contract PrivateVesting is Initializable, AccessControlUpgradeable, ReentrancyGu
             _slicePeriod >= 0 && _slicePeriod <= 60,
             "PrivateVesting: Invalid Slice Period"
         );
-        schedule.beneficiary = _beneficiary;
-        schedule.totalAmount = _totalAmount;
-        schedule.claimInterval = _claimInterval;
-        schedule.endTime = _endTime;
-        schedule.startTime = _startTime;
-        schedule.slicePeriod = _slicePeriod;
-        schedule.cliffPeriod = _cliffPeriod;
+        
+        vestingSchedules[_vestingScheduleID].beneficiary = _beneficiary;
+        vestingSchedules[_vestingScheduleID].totalAmount = _totalAmount;
+        vestingSchedules[_vestingScheduleID].claimInterval = _claimInterval;
+        vestingSchedules[_vestingScheduleID].endTime = _endTime;
+        vestingSchedules[_vestingScheduleID].startTime = _startTime;
+        vestingSchedules[_vestingScheduleID].slicePeriod = _slicePeriod;
+        vestingSchedules[_vestingScheduleID].cliffPeriod = _cliffPeriod;
     }
 
     /**

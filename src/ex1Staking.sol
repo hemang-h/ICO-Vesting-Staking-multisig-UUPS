@@ -62,9 +62,9 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         _grantRole(OWNER_ROLE, _msgSender());
         _grantRole(UPGRADER_ROLE, _msgSender());
         _grantRole(STAKING_AUTHORISER_ROLE, _msgSender());
-        icoInterface = Iex1ICO(0x79823739fe6991921c5fA8AECded1d1b50be08f3);
-        vestingInterface = IVestingICO(0x6933A9eBf29F3299014e8E5477A23E44e74540f6);
-        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
+        icoInterface = Iex1ICO(0xfB7Dcb92988bCb55532D09Ca61E3fb6C36F1ef8D);
+        vestingInterface = IVestingICO(0x4C9E1554ba3d726482f37D2be12c2c24a42E97F9);
+        ex1Token = IERC20(0x47746b1a039826dcd41F7797a756A6cD353F239F);
     }
 
     /**
@@ -130,6 +130,7 @@ contract Ex1Staking is Initializable, ReentrancyGuardUpgradeable, AccessControlU
         totalStakedPerICO[_icoStageID][_msgSender()] = deposits;
         stakeTimestamp[_icoStageID][_msgSender()] = block.timestamp;
         previousStakingRewardClaimTimestamp[_icoStageID][_msgSender()] = 0;
+        unstaked[_icoStageID][_msgSender()] = false;
         return true;
     }
 

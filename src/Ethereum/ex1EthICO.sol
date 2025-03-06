@@ -78,7 +78,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
 
     address public receivingWallet;
 
-
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
         _disableInitializers();
@@ -154,12 +153,11 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         emit ICOStageUpdated(_stageID, _startTime, _endTime, _tokenPriceUSD);
     }
 
-     /**
+    /**
          @dev To get latest ETH price in 10**8 format
-    **/
+    */
     function getLatestETHPrice() public view returns (uint256) {
         (, int256 price, , , ) = aggregatorInterfaceETH.latestRoundData();
-        price = (price * (10 ** 8));
         return uint256(price);
     }
 
@@ -172,9 +170,10 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 amount,
         uint256 _icoStageID
     ) public view returns (uint256 ethAmount) {
-        uint256 usdPrice = calculatePrice(amount, _icoStageID);
-        ethAmount = (usdPrice * (10**18)) / getLatestETHPrice();
-        return ethAmount;
+        uint256 usdPrice = calculatePrice(amount, _icoStageID); 
+        uint256 latestEthPrice = getLatestETHPrice() * (10 ** 10); 
+        uint256 _ethAmount = (usdPrice * (10 ** 18)) / latestEthPrice;   
+        return _ethAmount;
     }
 
     /**
@@ -188,7 +187,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _icoStageID
     ) public view returns(uint256) {
          require (
-            _amount < MaxTokenLimitPerTransaction || HoldersCummulativeBalance[_msgSender()] < MaxTokenLimitPerAddress,
+            _amount < MaxTokenLimitPerTransaction,
             "ex1Presale: Max Limit Reached!"
         );
         require(
@@ -196,7 +195,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             "ex1Presale: Stage does not exist or is inactive!"
         );
         uint256 tokenValue = icoStages[_icoStageID].tokenPrice;
-        uint256 usdValueUnscaled = ((_amount/(10 ** 18)) * (tokenValue/(10 ** 18)));       
+        uint256 usdValueUnscaled = (_amount * tokenValue)/(10 ** 18);       
         return usdValueUnscaled;
     }
 

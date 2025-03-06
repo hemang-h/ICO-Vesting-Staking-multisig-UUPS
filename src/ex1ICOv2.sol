@@ -22,7 +22,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     IAggregator public aggregatorInterfaceETH;
     IAggregator public aggregatorInterfaceBTC;
 
-    bytes32 public constant ETH_TXN_RECORDER_ROLE = keccak256("ETH_TXN_RECORDER_ROLE");
+    bytes32 public constant TXN_RECORDER_ROLE = keccak256("TXN_RECORDER_ROLE");
     bytes32 public constant OWNER_ROLE = keccak256("OWNER_ROLE");
     bytes32 public constant UPGRADER_ROLE = keccak256("UPGRADER_ROLE");
     bytes32 public constant ICO_AUTHORISER_ROLE = keccak256("ICO_AUTHORISER_ROLE");
@@ -42,20 +42,22 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     uint256 public totalBuyers;
     uint256 public totalUSDRaised;
     uint256 public totalETHRaised;
+    uint256 public totalBTCRaised;
 
     uint256 public latestICOStageID;
     uint256[] public stageIDs;
 
-    mapping(address => uint256) public HoldersCumulativeBalance;
+    mapping(uint256 => ICOStage) public icoStages;
+
     mapping(uint256 => uint256) public tokensRaisedPerStage;  
     mapping(uint256 => uint256) public usdRaisedPerStage;
     
     mapping(uint256 => mapping(address => uint256)) public UserDepositsPerICOStage; 
     mapping(uint256 => mapping(address => bool)) public HoldersExists;
+    mapping(address => uint256) public HoldersCumulativeBalance;
 
     mapping(address => uint256) public BoughtWithEth;
-
-    mapping(uint256 => ICOStage) public icoStages;
+    mapping(address => uint256) public BoughtWithBTC;
 
     address public recievingWallet;  
     bool public isTokenReleasable; 
@@ -66,17 +68,16 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 amount,
         uint256 TokenPrice,
         uint256 usdPaid,
-        uint256 ICOStage,
-        uint256 timestamp
+        uint256 ICOStage
     );
 
-    event TokensBoughtETH(
+    event TokensBoughtOffchain(
         address indexed buyer,
+        string tokenAddress,
         uint256 amount,
         uint256 TokenPrice,
         uint256 ethPaid,
-        uint256 ICOStage,
-        uint256 timestamp
+        uint256 ICOStage
     );
 
     event ICOStageCreated(
@@ -86,14 +87,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 tokenPrice,
         bool isActive
     );
-
-    event ICOStageUpdated(
-        uint256 stageID,
-        uint256 startTime,
-        uint256 endTime,
-        uint256 tokenPrice
-    );
-
 
     /// @custom:oz-upgrades-unsafe-allow constructor
     constructor() {
@@ -106,21 +99,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         
         _grantRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _grantRole(OWNER_ROLE, msg.sender);
-        _grantRole(UPGRADER_ROLE, msg.sender);
         _grantRole(ICO_AUTHORISER_ROLE, msg.sender);
-
-        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
-
-        USDCAddress = IERC20(0x3966d24Aa915f316Fb3Ae8b7819EA1920c78615E); 
-        USDTAddress = IERC20(0x69AFebb38Dc509aaD0a0dde212e03e4D22D581d1);
-
-        aggregatorInterfaceETH = IAggregator(0x143db3CEEfbdfe5631aDD3E50f7614B6ba708BA7);
-        aggregatorInterfaceBTC = IAggregator(0x5741306c21795FdCBb9b265Ea0255F499DFe515C);
-
-        recievingWallet = 0x52C1ffFb760F653fe648F396747967Bb1971eb38;
-
-        MaxTokenLimitPerAddress = 1_000_000 * 10 ** 18;
-        MaxTokenLimitPerTransaction = 100_000 * 10 ** 18;
     }
 
     function _authorizeUpgrade(address newImplementation)
@@ -230,7 +209,6 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             ) {
                 return ("Current Stage", _id);
             }
-
             if (
                 !nextStageFound &&
                 block.timestamp < icoStages[_id].startTime &&
@@ -240,20 +218,11 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
                 nextStageFound = true;
             }
         }
-
         if (nextStageFound) {
             return ("Next Active Stage", nextActiveStageID);
         }
 
         revert("ex1: No Active or Upcoming ICO Stage Found");
-    }
-
-    /** 
-        @dev Function to deactivate a specific ICO stage
-    */
-    function deactivateICOStage(uint256 _stageID) external onlyRole(ICO_AUTHORISER_ROLE) {
-        require(icoStages[_stageID].isActive, "Stage is already inactive!");
-        icoStages[_stageID].isActive = false;
     }
 
     /** 
@@ -267,9 +236,10 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _stageID,
         uint256 _startTime,
         uint256 _endTime,
-        uint256 _tokenPriceUSD
+        uint256 _tokenPriceUSD,
+        bool active
     ) external onlyRole(ICO_AUTHORISER_ROLE) {
-        require(icoStages[_stageID].isActive, "ex1Presale: Stage does not exist or is inactive!");
+        require(_stageID <= latestICOStageID, "ex1Presale: Stage does not exist");
         require(
             (_startTime < _endTime) &&
             _endTime > block.timestamp,
@@ -288,12 +258,13 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
                 _endTime < icoStages[nextID].startTime,
                 "ICO: End Time Overlapping with next ICO startTime!"
             ); 
-        }        
+        }
         icoStages[_stageID].startTime = _startTime;
-        icoStages[_stageID].endTime = _endTime;
         icoStages[_stageID].tokenPrice = _tokenPriceUSD;
+        icoStages[_stageID].isActive = active;
+        icoStages[_stageID].endTime = _endTime;
 
-        emit ICOStageUpdated(_stageID, _startTime, _endTime, _tokenPriceUSD);
+        emit ICOStageCreated(_stageID, _startTime, _endTime, _tokenPriceUSD, active);
     }
 
     /**
@@ -320,10 +291,11 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
     function getTokenPriceInETH(
         uint256 amount,
         uint256 _icoStageID
-    ) external view returns (uint256 ethAmount) {
-        uint256 usdPrice = calculatePrice(amount, _icoStageID);
-        ethAmount = (usdPrice * getLatestETHPrice()) / (10 ** (18+8));  
-        return ethAmount;
+    ) public view returns (uint256 ethAmount) {
+        uint256 usdPrice = calculatePrice(amount, _icoStageID); 
+        uint256 latestEthPrice = getLatestETHPrice() * (10 ** 10); 
+        uint256 _ethAmount = (usdPrice * (10 ** 18)) / latestEthPrice;   
+        return _ethAmount;
     }
 
     /**
@@ -336,8 +308,9 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _icoStageID
     ) external view returns (uint256 BTCAmount) {
         uint256 usdPrice = calculatePrice(amount, _icoStageID);
-        BTCAmount = (usdPrice * getLatestBTCPrice()) / (10 ** (18+8));
-        return BTCAmount;
+        uint256 latestBTCPrice = getLatestBTCPrice() * (10 ** 10);
+        uint256 _btcAmount = (usdPrice * (10 ** 18)) / latestBTCPrice;
+        return _btcAmount;
     }
 
     /**
@@ -391,8 +364,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             _amount,
             icoStages[_icoStageID].tokenPrice,
             usdValue,
-            _icoStageID,
-            block.timestamp
+            _icoStageID
         );
         if (isTokenReleasable) {
             IERC20(ex1Token).safeTransfer(msg.sender, _amount); 
@@ -443,8 +415,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
             _amount,
             icoStages[_icoStageID].tokenPrice,
             usdValue,
-            _icoStageID,
-            block.timestamp
+            _icoStageID
         );
         if (isTokenReleasable) {
             IERC20(ex1Token).safeTransfer(msg.sender, _amount); 
@@ -485,7 +456,7 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         uint256 _ethRecieved, 
         uint256 _icoStageID, 
         address _recipient 
-    ) external checkSaleStatus(_icoStageID) onlyRole(ETH_TXN_RECORDER_ROLE) {       
+    ) external checkSaleStatus(_icoStageID) onlyRole(TXN_RECORDER_ROLE) {       
 
         totalTokensSold += _amount;
                
@@ -511,14 +482,69 @@ contract Ex1ICO is Initializable, ReentrancyGuardUpgradeable, AccessControlUpgra
         totalETHRaised += _ethRecieved;
 
         BoughtWithEth[_recipient] += _ethRecieved;
+        string memory ETH = "ETH";
 
-        emit TokensBoughtETH(
+        emit TokensBoughtOffchain(
             _recipient,
+            ETH,
             _amount,
             icoStages[_icoStageID].tokenPrice,
             _ethRecieved,
-            _icoStageID,
-            block.timestamp
+            _icoStageID
+        );
+    }
+
+    /**
+        * @dev Records a transaction for token purchase made using BTC during an ICO stage. 
+        * This function is callable only by a backend wallet with the `BTC_TXN_RECORDER_ROLE` 
+        * and is triggered when the transaction is recorded on the BTC chain via backend APIs.
+        * 
+        * @param _amount The number of tokens purchased.
+        * @param _btcRecieved The amount of BTC received for the transaction.
+        * @param _icoStageID The ID of the ICO stage for which the purchase is being recorded.
+        * @param _recipient The address of the buyer receiving the tokens.
+    */
+    function purchasedViaBTC(
+        uint256 _amount,   
+        uint256 _btcRecieved, 
+        uint256 _icoStageID, 
+        address _recipient 
+    ) external checkSaleStatus(_icoStageID) onlyRole(TXN_RECORDER_ROLE) {       
+
+        totalTokensSold += _amount;
+               
+        tokensRaisedPerStage[_icoStageID] += _amount;
+
+        if (isTokenReleasable) {
+            bool success = IERC20(ex1Token).transfer(_recipient, _amount); 
+            require(
+                success,
+                "ex1Presale: Token Transfer Failed!"
+            );
+        }
+        else {
+            UserDepositsPerICOStage[_icoStageID][_recipient] += _amount;
+        }
+
+        if (!HoldersExists[_icoStageID][_recipient]) {
+            totalBuyers += 1;
+            HoldersExists[_icoStageID][_recipient] = true;
+        }
+        HoldersCumulativeBalance[_recipient] += _amount;
+
+        totalBTCRaised += _btcRecieved;
+
+        BoughtWithBTC[_recipient] += _btcRecieved;
+
+        string memory BTC = "BTC";
+
+        emit TokensBoughtOffchain(
+            _recipient,
+            BTC,
+            _amount,
+            icoStages[_icoStageID].tokenPrice,
+            _btcRecieved,
+            _icoStageID
         );
     }
 

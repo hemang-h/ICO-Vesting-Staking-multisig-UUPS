@@ -1,20 +1,29 @@
-
+For ICO Vesting, startTime acts as a cliff Period. Here's why: 
+In the calculation, startTime acts as the time when the tokens starts releasing. 
 
 Example:
 If A = 1000 tokens, Time = 12 months, Claiming interval = 30 days: Slice Period = 10s
 
+Time = 12 months
+     = 365 * 24 * 60 * 60  
+     = 31536000 = T            - variable (i)
+
 N = Number of Slices = T/10s  = 12 slices
                  = 31536000/10 = 3153600
 
-Z = amount of token released per slice = 1000 / 3153600 ≈ 0.000317097 tokens per slice
-E = elapsedSlices = (currentTime - startTime)/ SlicePeriod
+Z = amount of token released per slice 
+  = 1000 / 3153600 
+  ≈ 0.000317097 tokens per slice
+
+E = elapsedSlices 
+  = (currentTime - startTime)/ SlicePeriod
               = lets say, 1 month = 2592000 sec 
               = 259200 slice
+
 claimableAmount =  Z * E    
                 = 0.000317097 * 259200
                 = 82.191 tokens           
 
-
 Basically, 82.191 tokens in one month; 
-tokens released in 1 day = 2.73
-Tokens released in 365 days = 999.9905
+Tokens released in 1 day = 2.73
+Tokens released in 365 days = 999.9999 ≈ 1000 Tokens

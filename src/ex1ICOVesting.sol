@@ -74,8 +74,8 @@ contract ICOVesting is Initializable, AccessControlUpgradeable, ReentrancyGuardU
         _grantRole(UPGRADER_ROLE, _msgSender());
         _grantRole(VESTING_AUTHORISER_ROLE, _msgSender());
 
-        icoInterface = Iex1ICO(0x79823739fe6991921c5fA8AECded1d1b50be08f3);
-        ex1Token = IERC20(0xdfdAc872759a486C62854C00535D7f3093Ad62B5);
+        icoInterface = Iex1ICO(0xfB7Dcb92988bCb55532D09Ca61E3fb6C36F1ef8D);
+        ex1Token = IERC20(0x47746b1a039826dcd41F7797a756A6cD353F239F);
     }
 
     /**
