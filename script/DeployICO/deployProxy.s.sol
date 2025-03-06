@@ -8,7 +8,7 @@ import "forge-std/Script.sol";
 contract DeployUUPSProxy is Script {
     function run() public {
 
-        address _implementation = 0x2325FdEFb40bF1285C4D6c1614b6f07899260cde; // Replace with your token address
+        address _implementation = 0x4002D67587948873D442a593E900d40d53CFB3bc; // Replace with your token address
         vm.startBroadcast();
 
         // Encode the initializer function call
@@ -28,4 +28,5 @@ contract DeployUUPSProxy is Script {
 
 /*
 forge script script/DeployICO/deployProxy.s.sol:DeployUUPSProxy --rpc-url=$BSC_TESTNET_RPC_URL --private-key=$BSC_TESTNET_PRIVATE_KEY --broadcast --etherscan-api-key=$BSC_TESTNET_API_KEY --verify
+
 */

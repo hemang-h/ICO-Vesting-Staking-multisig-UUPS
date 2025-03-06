@@ -8,7 +8,7 @@ import "forge-std/Script.sol";
 contract DeployUUPSProxy is Script {
     function run() public {
         // Replace with your deployed implementation address
-        address _implementation = 0x8721891CB7eFC6F1837dD2131db8fdAC0474510e;
+        address _implementation = 0x7501A998E9Ff667B6Db63706B8a08c3eda53eFAE;
         
         
         // Define initial owners and required approvals
